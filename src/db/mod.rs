@@ -3,7 +3,7 @@ pub mod models;
 use rusqlite::{Connection, params};
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use models::{User, Repository, PagesConfig, AppsConfig, DeployLog};
+use models::{User, Repository, PagesConfig, AppsConfig, DeployLog, SshKey};
 
 #[derive(Clone)]
 pub struct Database {
@@ -71,6 +71,15 @@ impl Database {
                 started_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
                 finished_at DATETIME,
                 log_output  TEXT DEFAULT ''
+            );
+
+            CREATE TABLE IF NOT EXISTS ssh_keys (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id     INTEGER NOT NULL REFERENCES users(id),
+                repo_id     INTEGER NOT NULL REFERENCES repositories(id),
+                name        TEXT DEFAULT '',
+                public_key  TEXT NOT NULL,
+                created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
             );"
         )?;
         Ok(())
@@ -378,6 +387,96 @@ impl Database {
                 env_vars: row.get(6)?,
                 enabled: row.get::<_, i32>(7)? != 0,
             })
+        })?;
+        rows.collect()
+    }
+
+    // ── SSH key operations ──
+
+    pub async fn create_ssh_key(&self, user_id: i64, repo_id: i64, name: &str, public_key: &str) -> Result<SshKey, rusqlite::Error> {
+        let conn = self.conn.lock().await;
+        conn.execute(
+            "INSERT INTO ssh_keys (user_id, repo_id, name, public_key) VALUES (?1, ?2, ?3, ?4)",
+            params![user_id, repo_id, name, public_key],
+        )?;
+        let id = conn.last_insert_rowid();
+        Ok(SshKey {
+            id,
+            user_id,
+            repo_id,
+            name: name.to_string(),
+            public_key: public_key.to_string(),
+            created_at: chrono::Utc::now().to_rfc3339(),
+        })
+    }
+
+    pub async fn list_ssh_keys(&self, repo_id: i64) -> Result<Vec<SshKey>, rusqlite::Error> {
+        let conn = self.conn.lock().await;
+        let mut stmt = conn.prepare(
+            "SELECT id, user_id, repo_id, name, public_key, created_at FROM ssh_keys WHERE repo_id = ?1 ORDER BY created_at DESC"
+        )?;
+        let rows = stmt.query_map(params![repo_id], |row| {
+            Ok(SshKey {
+                id: row.get(0)?,
+                user_id: row.get(1)?,
+                repo_id: row.get(2)?,
+                name: row.get(3)?,
+                public_key: row.get(4)?,
+                created_at: row.get(5)?,
+            })
+        })?;
+        rows.collect()
+    }
+
+    pub async fn delete_ssh_key(&self, id: i64, user_id: i64) -> Result<bool, rusqlite::Error> {
+        let conn = self.conn.lock().await;
+        let affected = conn.execute(
+            "DELETE FROM ssh_keys WHERE id = ?1 AND user_id = ?2",
+            params![id, user_id],
+        )?;
+        Ok(affected > 0)
+    }
+
+    pub async fn get_all_ssh_keys(&self) -> Result<Vec<(SshKey, User, Repository)>, rusqlite::Error> {
+        let conn = self.conn.lock().await;
+        let mut stmt = conn.prepare(
+            "SELECT k.id, k.user_id, k.repo_id, k.name, k.public_key, k.created_at,
+                    u.id, u.username, u.email, u.password_hash, u.bio, u.avatar_url, u.created_at,
+                    r.id, r.user_id, r.name, r.description, r.is_private, r.default_branch, r.created_at, r.updated_at
+             FROM ssh_keys k
+             JOIN users u ON u.id = k.user_id
+             JOIN repositories r ON r.id = k.repo_id"
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok((
+                SshKey {
+                    id: row.get(0)?,
+                    user_id: row.get(1)?,
+                    repo_id: row.get(2)?,
+                    name: row.get(3)?,
+                    public_key: row.get(4)?,
+                    created_at: row.get(5)?,
+                },
+                User {
+                    id: row.get(6)?,
+                    username: row.get(7)?,
+                    email: row.get(8)?,
+                    password_hash: row.get(9)?,
+                    bio: row.get(10)?,
+                    avatar_url: row.get(11)?,
+                    created_at: row.get(12)?,
+                },
+                Repository {
+                    id: row.get(13)?,
+                    user_id: row.get(14)?,
+                    name: row.get(15)?,
+                    description: row.get(16)?,
+                    is_private: row.get(17)?,
+                    default_branch: row.get(18)?,
+                    created_at: row.get(19)?,
+                    updated_at: row.get(20)?,
+                },
+            ))
         })?;
         rows.collect()
     }

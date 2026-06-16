@@ -115,6 +115,9 @@ pub fn create_app(state: AppState) -> Router {
         .route("/api/repos/:repo_id/move", post(handlers::files::move_file))
         .route("/api/repos/:repo_id/status", get(handlers::files::status))
         .route("/api/repos/:repo_id/commit", post(handlers::files::commit))
+        .route("/api/repos/:repo_id/ssh-keys", get(handlers::ssh_keys::list_keys))
+        .route("/api/repos/:repo_id/ssh-keys", post(handlers::ssh_keys::add_key))
+        .route("/api/repos/:repo_id/ssh-keys/:key_id", delete(handlers::ssh_keys::delete_key))
 
         .fallback(fallback_handler)
         .layer(middleware::from_fn(auth_middleware))

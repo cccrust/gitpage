@@ -102,6 +102,16 @@ pub struct AuthResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SshKey {
+    pub id: i64,
+    pub user_id: i64,
+    pub repo_id: i64,
+    pub name: String,
+    pub public_key: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeployLog {
     pub id: i64,
     pub repo_id: i64,

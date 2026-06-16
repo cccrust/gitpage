@@ -309,3 +309,26 @@ export function deployApps(repoId: number) {
 export function deleteAppsConfig(repoId: number) {
   return request<{ success: boolean }>('DELETE', `/api/apps/${repoId}`)
 }
+
+// ── SSH Keys ──
+
+export interface SshKey {
+  id: number
+  user_id: number
+  repo_id: number
+  name: string
+  public_key: string
+  created_at: string
+}
+
+export function listSshKeys(repoId: number) {
+  return request<{ ssh_keys: SshKey[] }>('GET', `/api/repos/${repoId}/ssh-keys`)
+}
+
+export function addSshKey(repoId: number, name: string, publicKey: string) {
+  return request<{ success: boolean; ssh_key: SshKey }>('POST', `/api/repos/${repoId}/ssh-keys`, { name, public_key: publicKey })
+}
+
+export function deleteSshKey(repoId: number, keyId: number) {
+  return request<{ success: boolean }>('DELETE', `/api/repos/${repoId}/ssh-keys/${keyId}`)
+}
