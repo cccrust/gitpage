@@ -332,6 +332,42 @@ label.checkbox input[type="checkbox"] {
 .modal input, .modal textarea { margin-bottom: 12px; }
 .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
 
+/* ── Deploy Logs ── */
+.deploy-log-list {
+  display: flex; flex-direction: column; gap: 6px;
+}
+.deploy-log-entry {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 12px; border-radius: var(--radius);
+  border: 1px solid var(--border); text-decoration: none; color: inherit;
+}
+.deploy-log-entry:hover { background: var(--hover-bg); }
+.deploy-status { width: 20px; text-align: center; font-size: 14px; }
+.deploy-status-success { color: #16a34a; }
+.deploy-status-failed { color: #dc2626; }
+.deploy-status-running { color: #d97706; }
+.deploy-status-label { text-transform: capitalize; font-weight: 500; min-width: 60px; }
+.deploy-time { color: #666; font-size: 13px; }
+.deploy-arrow { margin-left: auto; color: #999; }
+
+.deploy-log-detail-header h2 { display: flex; align-items: center; gap: 8px; }
+.deploy-meta { display: flex; gap: 16px; margin: 8px 0 16px; color: #555; font-size: 13px; }
+.deploy-log-output {
+  background: #1e1e1e; color: #d4d4d4; border-radius: var(--radius);
+  padding: 16px; overflow-x: auto;
+}
+.deploy-log-output pre {
+  margin: 0; font-size: 13px; line-height: 1.5; white-space: pre-wrap; word-break: break-all;
+}
+
+.btn-sm {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 6px 14px; border-radius: var(--radius);
+  background: var(--bg); border: 1px solid var(--border);
+  color: var(--fg); text-decoration: none; font-size: 13px;
+}
+.btn-sm:hover { background: var(--hover-bg); }
+
 /* ── Responsive ── */
 @media (min-width: 768px) {
   .bottom-nav { display: none; }

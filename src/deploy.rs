@@ -178,11 +178,11 @@ pub async fn checkout_source(bare_repo_path: &str, workspace_dir: &str, branch: 
     Ok(())
 }
 
-pub async fn run_build(workspace_dir: &str, build_cmd: &str) -> Result<(), AppError> {
+pub async fn run_build(workspace_dir: &str, build_cmd: &str) -> Result<String, AppError> {
     let source_dir = std::path::Path::new(workspace_dir).join("source");
     tracing::info!("Running build: {} in {:?}", build_cmd, source_dir);
 
-    let status = tokio::process::Command::new("sh")
+    let output = tokio::process::Command::new("sh")
         .arg("-c")
         .arg(build_cmd)
         .current_dir(&source_dir)
@@ -190,12 +190,19 @@ pub async fn run_build(workspace_dir: &str, build_cmd: &str) -> Result<(), AppEr
         .await
         .map_err(|e| AppError::Internal(format!("Failed to run build: {}", e)))?;
 
-    if !status.status.success() {
-        let stderr = String::from_utf8_lossy(&status.stderr);
-        return Err(AppError::Internal(format!("Build failed:\n{}", stderr)));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let log = if stdout.is_empty() && stderr.is_empty() {
+        format!("$ {}\n", build_cmd)
+    } else {
+        format!("$ {}\n{}\n{}", build_cmd, stdout, stderr)
+    };
+
+    if !output.status.success() {
+        return Err(AppError::Internal(format!("Build failed:\n{}", log)));
     }
 
-    Ok(())
+    Ok(log)
 }
 
 pub async fn start_app(manager: &AppProcessManager, repo_id: i64, workspace_dir: &str, start_cmd: &str, port: u16, env_vars: &str) -> Result<(), AppError> {
@@ -299,29 +306,52 @@ pub async fn deploy_app(
     _username: &str,
     _repo_name: &str,
     repo_id: i64,
-) -> Result<u16, AppError> {
+) -> Result<(u16, String), AppError> {
     manager.update_status(repo_id, AppStatus::Deploying).await;
+    let mut log = String::new();
 
     // Checkout source
-    checkout_source(bare_repo_path, workspace_dir, &config.branch, &config.source_dir).await?;
+    log.push_str(&format!("$ git checkout -f {} -- {}\n---\n", config.branch, config.source_dir));
+    let _ = checkout_source(bare_repo_path, workspace_dir, &config.branch, &config.source_dir).await
+        .map_err(|e| {
+            log.push_str(&format!("Checkout failed: {}\n", e));
+            AppError::Internal(format!("Checkout failed: {}", e))
+        })?;
+    log.push_str("Checkout OK\n\n");
 
     // Detect project type
     let source_dir = std::path::Path::new(workspace_dir).join("source");
     let project_type = detect_project_type(source_dir.to_str().unwrap())?;
+    log.push_str(&format!("Detected: {:?}\n\n", project_type));
 
     // Resolve commands
     let (build_cmd, start_cmd) = resolve_commands(&project_type, config, source_dir.to_str().unwrap());
+    log.push_str(&format!("Build: {}\nStart: {}\n\n", build_cmd, start_cmd));
 
     // Build
     if !build_cmd.is_empty() {
-        run_build(workspace_dir, &build_cmd).await?;
+        match run_build(workspace_dir, &build_cmd).await {
+            Ok(build_log) => log.push_str(&build_log),
+            Err(e) => {
+                log.push_str(&format!("Build error: {}\n", e));
+                return Err(AppError::Internal(format!("Build failed")));
+            }
+        }
     }
 
     // Allocate port
     let port = manager.allocate_port().await?;
+    log.push_str(&format!("\nPort: {}\n\n", port));
 
     // Start
-    start_app(manager, repo_id, workspace_dir, &start_cmd, port, &config.env_vars).await?;
-
-    Ok(port)
+    match start_app(manager, repo_id, workspace_dir, &start_cmd, port, &config.env_vars).await {
+        Ok(()) => {
+            log.push_str(&format!("App started on port {}\n", port));
+            Ok((port, log))
+        }
+        Err(e) => {
+            log.push_str(&format!("Start failed: {}\n", e));
+            Err(AppError::Internal(format!("Start failed: {}", e)))
+        }
+    }
 }

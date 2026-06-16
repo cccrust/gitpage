@@ -256,6 +256,25 @@ export function commitRepo(repoId: number, message: string) {
   return request<{ success: boolean }>('POST', `/api/repos/${repoId}/commit`, { message })
 }
 
+// ── Deploy Logs ──
+
+export interface DeployLog {
+  id: number
+  repo_id: number
+  status: string
+  started_at: string
+  finished_at: string | null
+  log_output: string
+}
+
+export function listDeploys(repoId: number) {
+  return request<{ deploy_logs: DeployLog[] }>('GET', `/api/apps/${repoId}/deploys`)
+}
+
+export function getDeployLog(repoId: number, deployId: number) {
+  return request<{ deploy_log: DeployLog }>('GET', `/api/apps/${repoId}/deploys/${deployId}`)
+}
+
 const TEXT_EXTENSIONS = new Set([
   'txt', 'md', 'markdown', 'html', 'htm', 'css', 'js', 'ts', 'jsx', 'tsx',
   'json', 'yaml', 'yml', 'toml', 'xml', 'svg', 'csv',

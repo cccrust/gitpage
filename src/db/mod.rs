@@ -3,7 +3,7 @@ pub mod models;
 use rusqlite::{Connection, params};
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use models::{User, Repository, PagesConfig, AppsConfig};
+use models::{User, Repository, PagesConfig, AppsConfig, DeployLog};
 
 #[derive(Clone)]
 pub struct Database {
@@ -62,6 +62,15 @@ impl Database {
                 start_command   TEXT DEFAULT '',
                 env_vars        TEXT DEFAULT '{}',
                 enabled         INTEGER DEFAULT 0
+            );
+
+            CREATE TABLE IF NOT EXISTS deploy_logs (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                repo_id     INTEGER NOT NULL REFERENCES repositories(id),
+                status      TEXT NOT NULL DEFAULT 'running',
+                started_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+                finished_at DATETIME,
+                log_output  TEXT DEFAULT ''
             );"
         )?;
         Ok(())
@@ -371,6 +380,84 @@ impl Database {
             })
         })?;
         rows.collect()
+    }
+
+    // ── Deploy log operations ──
+
+    pub async fn create_deploy_log(&self, repo_id: i64) -> Result<DeployLog, rusqlite::Error> {
+        let conn = self.conn.lock().await;
+        conn.execute(
+            "INSERT INTO deploy_logs (repo_id, status) VALUES (?1, 'running')",
+            params![repo_id],
+        )?;
+        let id = conn.last_insert_rowid();
+        Ok(DeployLog {
+            id,
+            repo_id,
+            status: "running".to_string(),
+            started_at: chrono::Utc::now().to_rfc3339(),
+            finished_at: None,
+            log_output: String::new(),
+        })
+    }
+
+    pub async fn update_deploy_log(&self, id: i64, status: &str, log_output: &str) -> Result<(), rusqlite::Error> {
+        let conn = self.conn.lock().await;
+        conn.execute(
+            "UPDATE deploy_logs SET status = ?1, log_output = ?2, finished_at = CURRENT_TIMESTAMP WHERE id = ?3",
+            params![status, log_output, id],
+        )?;
+        Ok(())
+    }
+
+    pub async fn append_deploy_log(&self, id: i64, log_output: &str) -> Result<(), rusqlite::Error> {
+        let conn = self.conn.lock().await;
+        conn.execute(
+            "UPDATE deploy_logs SET log_output = log_output || ?1 WHERE id = ?2",
+            params![log_output, id],
+        )?;
+        Ok(())
+    }
+
+    pub async fn get_deploy_logs(&self, repo_id: i64) -> Result<Vec<DeployLog>, rusqlite::Error> {
+        let conn = self.conn.lock().await;
+        let mut stmt = conn.prepare(
+            "SELECT id, repo_id, status, started_at, finished_at, log_output
+             FROM deploy_logs WHERE repo_id = ?1 ORDER BY started_at DESC LIMIT 20"
+        )?;
+        let rows = stmt.query_map(params![repo_id], |row| {
+            Ok(DeployLog {
+                id: row.get(0)?,
+                repo_id: row.get(1)?,
+                status: row.get(2)?,
+                started_at: row.get(3)?,
+                finished_at: row.get(4)?,
+                log_output: row.get(5)?,
+            })
+        })?;
+        rows.collect()
+    }
+
+    pub async fn get_deploy_log(&self, id: i64) -> Result<Option<DeployLog>, rusqlite::Error> {
+        let conn = self.conn.lock().await;
+        let mut stmt = conn.prepare(
+            "SELECT id, repo_id, status, started_at, finished_at, log_output
+             FROM deploy_logs WHERE id = ?1"
+        )?;
+        let mut rows = stmt.query_map(params![id], |row| {
+            Ok(DeployLog {
+                id: row.get(0)?,
+                repo_id: row.get(1)?,
+                status: row.get(2)?,
+                started_at: row.get(3)?,
+                finished_at: row.get(4)?,
+                log_output: row.get(5)?,
+            })
+        })?;
+        match rows.next() {
+            Some(Ok(log)) => Ok(Some(log)),
+            _ => Ok(None),
+        }
     }
 
     pub async fn get_pages_config(&self, repo_id: i64) -> Result<Option<PagesConfig>, rusqlite::Error> {

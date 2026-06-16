@@ -43,6 +43,50 @@ pub async fn get_apps_config(
     })))
 }
 
+async fn do_deploy(state: &AppState, repo_id: i64, user_id: i64) -> Result<Json<Value>, AppError> {
+    let repo = state.db.find_repo_by_id(repo_id).await?
+        .ok_or_else(|| AppError::NotFound("Repository not found".into()))?;
+    let user = state.db.find_user_by_id(user_id).await?
+        .ok_or_else(|| AppError::NotFound("User not found".into()))?;
+    let cfg = state.db.get_apps_config(repo_id).await?
+        .ok_or_else(|| AppError::NotFound("Apps config not found".into()))?;
+
+    let repo_path = state.config.repo_path(&user.username, &repo.name);
+    let workspace = state.config.app_workspace_dir(&user.username, &repo.name);
+
+    // Create deploy log
+    let mut deploy_log = state.db.create_deploy_log(repo_id).await?;
+
+    match crate::deploy::deploy_app(
+        &state.app_manager,
+        &repo_path,
+        &workspace,
+        &cfg,
+        &user.username,
+        &repo.name,
+        repo_id,
+    ).await {
+        Ok((port, log)) => {
+            state.db.update_deploy_log(deploy_log.id, "success", &log).await?;
+            Ok(Json(json!({
+                "success": true,
+                "port": port,
+                "url": format!("/app/{}/{}", user.username, repo.name),
+                "deploy_log_id": deploy_log.id,
+            })))
+        }
+        Err(e) => {
+            let log = format!("Deploy failed: {}", e);
+            state.db.update_deploy_log(deploy_log.id, "failed", &log).await?;
+            Ok(Json(json!({
+                "success": false,
+                "deploy_error": format!("{}", e),
+                "deploy_log_id": deploy_log.id,
+            })))
+        }
+    }
+}
+
 pub async fn update_apps_config(
     State(state): State<AppState>,
     axum::Extension(user_id): axum::Extension<i64>,
@@ -65,38 +109,9 @@ pub async fn update_apps_config(
 
     state.db.upsert_apps_config(repo_id, &branch, &source_dir, &build_command, &start_command, &env_vars, enabled).await?;
 
-    // Auto-deploy if enabled
     if enabled {
-        let user = state.db.find_user_by_id(user_id).await?
-            .ok_or_else(|| AppError::NotFound("User not found".into()))?;
-        let repo_path = state.config.repo_path(&user.username, &repo.name);
-        let workspace = state.config.app_workspace_dir(&user.username, &repo.name);
-
-        match state.db.get_apps_config(repo_id).await? {
-            Some(cfg) => {
-                match crate::deploy::deploy_app(
-                    &state.app_manager,
-                    &repo_path,
-                    &workspace,
-                    &cfg,
-                    &user.username,
-                    &repo.name,
-                    repo_id,
-                ).await {
-                    Ok(port) => Ok(Json(json!({
-                        "success": true,
-                        "port": port,
-                    }))),
-                    Err(e) => Ok(Json(json!({
-                        "success": true,
-                        "deploy_error": format!("{}", e)
-                    }))),
-                }
-            }
-            None => Ok(Json(json!({ "success": true }))),
-        }
+        do_deploy(&state, repo_id, user_id).await
     } else {
-        // If disabled, stop the app
         crate::deploy::stop_app(&state.app_manager, repo_id).await;
         state.db.delete_apps_config(repo_id).await?;
         state.app_manager.unregister(repo_id).await;
@@ -116,26 +131,7 @@ pub async fn deploy_apps_handler(
         return Err(AppError::Unauthorized("无权操作".into()));
     }
 
-    let user = state.db.find_user_by_id(user_id).await?
-        .ok_or_else(|| AppError::NotFound("User not found".into()))?;
-
-    let cfg = state.db.get_apps_config(repo_id).await?
-        .ok_or_else(|| AppError::NotFound("Apps config not found".into()))?;
-
-    let repo_path = state.config.repo_path(&user.username, &repo.name);
-    let workspace = state.config.app_workspace_dir(&user.username, &repo.name);
-
-    let port = crate::deploy::deploy_app(
-        &state.app_manager,
-        &repo_path,
-        &workspace,
-        &cfg,
-        &user.username,
-        &repo.name,
-        repo_id,
-    ).await?;
-
-    Ok(Json(json!({ "success": true, "port": port, "url": format!("/app/{}/{}", user.username, repo.name) })))
+    do_deploy(&state, repo_id, user_id).await
 }
 
 pub async fn delete_apps_handler(
@@ -155,4 +151,26 @@ pub async fn delete_apps_handler(
     state.app_manager.unregister(repo_id).await;
 
     Ok(Json(json!({ "success": true })))
+}
+
+pub async fn list_deploys(
+    State(state): State<AppState>,
+    Path(repo_id): Path<i64>,
+) -> Result<Json<Value>, AppError> {
+    let deploy_logs = state.db.get_deploy_logs(repo_id).await?;
+    Ok(Json(json!({ "deploy_logs": deploy_logs })))
+}
+
+pub async fn get_deploy_log(
+    State(state): State<AppState>,
+    Path((repo_id, deploy_id)): Path<(i64, i64)>,
+) -> Result<Json<Value>, AppError> {
+    let log = state.db.get_deploy_log(deploy_id).await?
+        .ok_or_else(|| AppError::NotFound("Deploy log not found".into()))?;
+
+    if log.repo_id != repo_id {
+        return Err(AppError::NotFound("Deploy log not found for this repo".into()));
+    }
+
+    Ok(Json(json!({ "deploy_log": log })))
 }

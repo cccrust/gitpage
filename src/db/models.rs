@@ -100,3 +100,13 @@ pub struct AuthResponse {
     pub token: String,
     pub user: UserPublic,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeployLog {
+    pub id: i64,
+    pub repo_id: i64,
+    pub status: String,
+    pub started_at: String,
+    pub finished_at: Option<String>,
+    pub log_output: String,
+}

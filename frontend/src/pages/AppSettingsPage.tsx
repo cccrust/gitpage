@@ -147,9 +147,12 @@ export default function AppSettingsPage() {
               {status.url}/
             </a>
           </p>
-          <button className="btn" onClick={handleDeploy} disabled={deploying}>
-            {deploying ? 'Deploying...' : 'Redeploy'}
-          </button>
+          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+            <button className="btn" onClick={handleDeploy} disabled={deploying}>
+              {deploying ? 'Deploying...' : 'Redeploy'}
+            </button>
+            <Link to={`/repo/${repo.id}/deploys`} className="btn-sm">Deploy Logs</Link>
+          </div>
         </div>
       )}
     </div>

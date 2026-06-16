@@ -105,6 +105,8 @@ pub fn create_app(state: AppState) -> Router {
         .route("/api/apps/:repo_id", put(handlers::apps::update_apps_config))
         .route("/api/apps/:repo_id", delete(handlers::apps::delete_apps_handler))
         .route("/api/apps/:repo_id/deploy", post(handlers::apps::deploy_apps_handler))
+        .route("/api/apps/:repo_id/deploys", get(handlers::apps::list_deploys))
+        .route("/api/apps/:repo_id/deploys/:deploy_id", get(handlers::apps::get_deploy_log))
         .route("/api/repos/:repo_id/tree", get(handlers::files::tree))
         .route("/api/repos/:repo_id/raw", get(handlers::files::raw))
         .route("/api/repos/:repo_id/files", put(handlers::files::write_file))
@@ -335,6 +337,14 @@ pub(crate) async fn auto_deploy_app(state: AppState, username: String, repo_name
     let repo_path = state.config.repo_path(&username, &repo_name);
     let workspace = state.config.app_workspace_dir(&username, &repo_name);
 
+    let mut deploy_log = match state.db.create_deploy_log(repo.id).await {
+        Ok(l) => l,
+        Err(e) => {
+            tracing::error!("Failed to create deploy log: {}", e);
+            return;
+        }
+    };
+
     match crate::deploy::deploy_app(
         &state.app_manager,
         &repo_path,
@@ -344,7 +354,14 @@ pub(crate) async fn auto_deploy_app(state: AppState, username: String, repo_name
         &repo_name,
         repo.id,
     ).await {
-        Ok(port) => tracing::info!("App deployed for {}/{} on port {}", username, repo_name, port),
-        Err(e) => tracing::error!("App deploy failed for {}/{}: {}", username, repo_name, e),
+        Ok((port, log)) => {
+            let _ = state.db.update_deploy_log(deploy_log.id, "success", &log).await;
+            tracing::info!("App deployed for {}/{} on port {}", username, repo_name, port);
+        }
+        Err(e) => {
+            let log = format!("Deploy failed: {}", e);
+            let _ = state.db.update_deploy_log(deploy_log.id, "failed", &log).await;
+            tracing::error!("App deploy failed for {}/{}: {}", username, repo_name, e);
+        }
     }
 }

@@ -8,6 +8,8 @@ import RepoPage from './pages/RepoPage'
 import FileViewPage from './pages/FileViewPage'
 import FileExplorerPage from './pages/FileExplorerPage'
 import FileEditorPage from './pages/FileEditorPage'
+import DeployLogsPage from './pages/DeployLogsPage'
+import DeployLogDetailPage from './pages/DeployLogDetailPage'
 import CommitsPage from './pages/CommitsPage'
 import PagesSettingsPage from './pages/PagesSettingsPage'
 import AppSettingsPage from './pages/AppSettingsPage'
@@ -31,6 +33,8 @@ export default function App() {
           <Route path="/repo/:id/commits/:branch" element={<CommitsPage />} />
           <Route path="/repo/:id/pages" element={<PagesSettingsPage />} />
           <Route path="/repo/:id/app" element={<AppSettingsPage />} />
+          <Route path="/repo/:id/deploys" element={<DeployLogsPage />} />
+          <Route path="/repo/:id/deploys/:deployId" element={<DeployLogDetailPage />} />
           <Route path="/repo/:id/settings" element={<RepoSettingsPage />} />
           <Route path="/u/:username" element={<UserProfilePage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
