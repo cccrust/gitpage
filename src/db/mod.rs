@@ -239,6 +239,49 @@ impl Database {
         Ok(affected > 0)
     }
 
+    // ── User update ──
+
+    pub async fn update_user(&self, id: i64, bio: &str, avatar_url: &str) -> Result<(), rusqlite::Error> {
+        let conn = self.conn.lock().await;
+        conn.execute(
+            "UPDATE users SET bio = ?1, avatar_url = ?2 WHERE id = ?3",
+            params![bio, avatar_url, id],
+        )?;
+        Ok(())
+    }
+
+    pub async fn search_repos(&self, query: &str, limit: i64) -> Result<Vec<Repository>, rusqlite::Error> {
+        let conn = self.conn.lock().await;
+        let pattern = format!("%{}%", query);
+        let mut stmt = conn.prepare(
+            "SELECT id, user_id, name, description, is_private, default_branch, created_at, updated_at
+             FROM repositories WHERE (name LIKE ?1 OR description LIKE ?1) AND is_private = 0
+             ORDER BY updated_at DESC LIMIT ?2"
+        )?;
+        let rows = stmt.query_map(params![pattern, limit], |row| {
+            Ok(Repository {
+                id: row.get(0)?,
+                user_id: row.get(1)?,
+                name: row.get(2)?,
+                description: row.get(3)?,
+                is_private: row.get::<_, i32>(4)? != 0,
+                default_branch: row.get(5)?,
+                created_at: row.get(6)?,
+                updated_at: row.get(7)?,
+            })
+        })?;
+        rows.collect()
+    }
+
+    pub async fn update_repo(&self, id: i64, description: &str, is_private: bool) -> Result<(), rusqlite::Error> {
+        let conn = self.conn.lock().await;
+        conn.execute(
+            "UPDATE repositories SET description = ?1, is_private = ?2, updated_at = CURRENT_TIMESTAMP WHERE id = ?3",
+            params![description, is_private as i32, id],
+        )?;
+        Ok(())
+    }
+
     // ── Pages operations ──
 
     pub async fn upsert_pages_config(&self, repo_id: i64, branch: &str, source_dir: &str, custom_domain: &str, enabled: bool) -> Result<(), rusqlite::Error> {

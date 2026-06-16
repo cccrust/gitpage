@@ -1,8 +1,9 @@
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     Json,
 };
+use serde::Deserialize;
 use serde_json::{json, Value};
 
 use crate::app::AppState;
@@ -104,4 +105,44 @@ pub async fn get_repo_by_id(
     let user = state.db.find_user_by_id(repo.user_id).await?;
     let username = user.map(|u| u.username).unwrap_or_default();
     Ok(Json(json!({ "repo": repo, "username": username })))
+}
+
+#[derive(Deserialize)]
+pub struct SearchQuery {
+    pub q: String,
+}
+
+pub async fn search_repos(
+    State(state): State<AppState>,
+    Query(query): Query<SearchQuery>,
+) -> Result<Json<Value>, AppError> {
+    let repos = state.db.search_repos(&query.q, 20).await?;
+    Ok(Json(json!({ "repos": repos, "query": query.q })))
+}
+
+#[derive(Deserialize)]
+pub struct UpdateRepoRequest {
+    pub description: Option<String>,
+    pub is_private: Option<bool>,
+}
+
+pub async fn update_repo_handler(
+    State(state): State<AppState>,
+    axum::Extension(user_id): axum::Extension<i64>,
+    Path(repo_id): Path<i64>,
+    Json(req): Json<UpdateRepoRequest>,
+) -> Result<Json<Value>, AppError> {
+    let repo = state.db.find_repo_by_id(repo_id).await?
+        .ok_or_else(|| AppError::NotFound("倉庫不存在".into()))?;
+
+    if repo.user_id != user_id {
+        return Err(AppError::Unauthorized("無權限修改".into()));
+    }
+
+    let description = req.description.unwrap_or(repo.description);
+    let is_private = req.is_private.unwrap_or(repo.is_private);
+
+    state.db.update_repo(repo_id, &description, is_private).await?;
+
+    Ok(Json(json!({ "success": true })))
 }

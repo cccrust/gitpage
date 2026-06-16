@@ -150,10 +150,23 @@ export function listCommits(username: string, repo: string, branch: string) {
 
 // ── Pages ──
 
-export function getPagesConfig(repoId: number) {
-  return request<{ pages_config: unknown }>('GET', `/api/pages/${repoId}`)
+export interface PagesConfig {
+  id: number
+  repo_id: number
+  branch: string
+  source_dir: string
+  custom_domain: string
+  enabled: boolean
 }
 
-export function updatePagesConfig(repoId: number, data: Record<string, unknown>) {
-  return request<{ success: boolean }>('PUT', `/api/pages/${repoId}`, data)
+export function getPagesConfig(repoId: number) {
+  return request<{ pages_config: PagesConfig | null }>('GET', `/api/pages/${repoId}`)
+}
+
+export function updatePagesConfig(repoId: number, data: { branch?: string; source_dir?: string; custom_domain?: string; enabled?: boolean }) {
+  return request<{ success: boolean; deploy_error?: string }>('PUT', `/api/pages/${repoId}`, data)
+}
+
+export function deployPages(repoId: number) {
+  return request<{ success: boolean; pages_dir: string }>('POST', `/api/pages/${repoId}/deploy`)
 }

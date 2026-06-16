@@ -91,8 +91,13 @@ pub fn create_app(state: AppState) -> Router {
         .route("/api/:username/:repo_name/blob", get(handlers::content::get_file_content))
         .route("/api/:username/:repo_name/readme", get(handlers::content::get_readme))
         .route("/api/:username/:repo_name/commits/:branch", get(handlers::content::list_commits))
+        .route("/api/users/:username/profile", get(handlers::auth::get_user_profile))
+        .route("/api/users/:username/profile", put(handlers::auth::update_profile))
+        .route("/api/repos/search", get(handlers::repos::search_repos))
+        .route("/api/repos/:id", put(handlers::repos::update_repo_handler))
         .route("/api/pages/:repo_id", get(handlers::pages::get_pages_config))
         .route("/api/pages/:repo_id", put(handlers::pages::update_pages_config))
+        .route("/api/pages/:repo_id/deploy", post(handlers::pages::deploy_pages_handler))
         .fallback(fallback_handler)
         .layer(middleware::from_fn(auth_middleware))
         .layer(CorsLayer::permissive())
@@ -128,10 +133,12 @@ async fn fallback_handler(
                 .and_then(|v| v.to_str().ok())
                 .map(|s| s.to_string());
 
+            let is_push = content_type.as_deref() == Some("application/x-git-receive-pack-request");
+
             let body_bytes = axum::body::to_bytes(req.into_body(), 10 * 1024 * 1024).await
                 .unwrap_or_default();
 
-            return crate::git::handle_git_backend(
+            let resp = crate::git::handle_git_backend(
                 &method,
                 &path_info,
                 query.as_deref(),
@@ -141,6 +148,17 @@ async fn fallback_handler(
                 username,
                 repo_name,
             );
+
+            // Auto-deploy pages on successful push
+            if is_push && resp.status().is_success() {
+                tokio::spawn(auto_deploy_pages(
+                    state.clone(),
+                    username.to_string(),
+                    repo_name.to_string(),
+                ));
+            }
+
+            return resp;
         }
     }
 
@@ -192,4 +210,27 @@ async fn fallback_handler(
     }
 
     (StatusCode::NOT_FOUND, "Not found").into_response()
+}
+
+async fn auto_deploy_pages(state: AppState, username: String, repo_name: String) {
+    let repo_path = state.config.repo_path(&username, &repo_name);
+    let pages_dir = state.config.pages_dir(&username, &repo_name);
+
+    // Find the repo in DB
+    let user = match state.db.find_user_by_username(&username).await {
+        Ok(Some(u)) => u,
+        _ => return,
+    };
+    let repo = match state.db.find_repo_by_name(user.id, &repo_name).await {
+        Ok(Some(r)) => r,
+        _ => return,
+    };
+
+    let cfg = match state.db.get_pages_config(repo.id).await {
+        Ok(Some(c)) if c.enabled => c,
+        _ => return,
+    };
+
+    let _ = crate::git::deploy_pages(&repo_path, &pages_dir, &cfg.branch, &cfg.source_dir);
+    tracing::info!("Pages deployed for {}/{}", username, repo_name);
 }

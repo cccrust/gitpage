@@ -20,7 +20,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           <div className="spacer" />
           {loggedIn ? (
             <>
-              <Link to="/new" className="nav-link">+ New</Link>
+              <Link to="/" className="nav-link">Repos</Link>
               <a href="#" className="nav-link" onClick={doLogout}>Logout</a>
             </>
           ) : (

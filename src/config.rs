@@ -44,4 +44,8 @@ impl Config {
     pub fn user_repos_path(&self, username: &str) -> String {
         format!("{}/{}", self.storage.base_path, username)
     }
+
+    pub fn pages_dir(&self, username: &str, repo: &str) -> String {
+        format!("{}/{}/{}/pages", self.storage.base_path, username, repo)
+    }
 }

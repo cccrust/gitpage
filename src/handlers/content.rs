@@ -6,8 +6,25 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 use crate::app::AppState;
+use crate::db::models::Repository;
 use crate::git;
 use crate::utils::errors::AppError;
+
+async fn resolve_repo(state: &AppState, username: &str, repo_name: &str, auth_user_id: Option<i64>) -> Result<Repository, AppError> {
+    let user = state.db.find_user_by_username(username).await?
+        .ok_or_else(|| AppError::NotFound("使用者不存在".into()))?;
+    let repo = state.db.find_repo_by_name(user.id, repo_name).await?
+        .ok_or_else(|| AppError::NotFound("倉庫不存在".into()))?;
+
+    if repo.is_private {
+        match auth_user_id {
+            Some(uid) if uid == repo.user_id => {}
+            _ => return Err(AppError::Unauthorized("私有倉庫".into())),
+        }
+    }
+
+    Ok(repo)
+}
 
 #[derive(Debug, Deserialize)]
 pub struct TreeQuery {
@@ -30,11 +47,10 @@ pub async fn list_directory(
     State(state): State<AppState>,
     Path((username, repo_name)): Path<(String, String)>,
     Query(query): Query<TreeQuery>,
+    user_id: Option<axum::Extension<i64>>,
 ) -> Result<Json<Value>, AppError> {
-    let user = state.db.find_user_by_username(&username).await?
-        .ok_or_else(|| AppError::NotFound("使用者不存在".into()))?;
-    let repo = state.db.find_repo_by_name(user.id, &repo_name).await?
-        .ok_or_else(|| AppError::NotFound("倉庫不存在".into()))?;
+    let uid = user_id.map(|e| e.0);
+    let repo = resolve_repo(&state, &username, &repo_name, uid).await?;
 
     let branch = query.branch.as_deref().unwrap_or(&repo.default_branch);
     let path = query.path.as_deref().unwrap_or("");
@@ -61,11 +77,10 @@ pub async fn get_file_content(
     State(state): State<AppState>,
     Path((username, repo_name)): Path<(String, String)>,
     Query(query): Query<BlobQuery>,
+    user_id: Option<axum::Extension<i64>>,
 ) -> Result<Json<Value>, AppError> {
-    let user = state.db.find_user_by_username(&username).await?
-        .ok_or_else(|| AppError::NotFound("使用者不存在".into()))?;
-    let repo = state.db.find_repo_by_name(user.id, &repo_name).await?
-        .ok_or_else(|| AppError::NotFound("倉庫不存在".into()))?;
+    let uid = user_id.map(|e| e.0);
+    let repo = resolve_repo(&state, &username, &repo_name, uid).await?;
 
     let branch = query.branch.as_deref().unwrap_or(&repo.default_branch);
     let path = query.path.trim_start_matches('/');
@@ -102,11 +117,10 @@ pub async fn get_readme(
     State(state): State<AppState>,
     Path((username, repo_name)): Path<(String, String)>,
     Query(query): Query<ReadmeQuery>,
+    user_id: Option<axum::Extension<i64>>,
 ) -> Result<Json<Value>, AppError> {
-    let user = state.db.find_user_by_username(&username).await?
-        .ok_or_else(|| AppError::NotFound("使用者不存在".into()))?;
-    let _repo = state.db.find_repo_by_name(user.id, &repo_name).await?
-        .ok_or_else(|| AppError::NotFound("倉庫不存在".into()))?;
+    let uid = user_id.map(|e| e.0);
+    let _repo = resolve_repo(&state, &username, &repo_name, uid).await?;
 
     let branch = query.branch.as_deref().unwrap_or("main");
     let repo_path = state.config.repo_path(&username, &repo_name);
@@ -128,11 +142,10 @@ pub async fn get_readme(
 pub async fn list_commits(
     State(state): State<AppState>,
     Path((username, repo_name, branch)): Path<(String, String, String)>,
+    user_id: Option<axum::Extension<i64>>,
 ) -> Result<Json<Value>, AppError> {
-    let user = state.db.find_user_by_username(&username).await?
-        .ok_or_else(|| AppError::NotFound("使用者不存在".into()))?;
-    let repo = state.db.find_repo_by_name(user.id, &repo_name).await?
-        .ok_or_else(|| AppError::NotFound("倉庫不存在".into()))?;
+    let uid = user_id.map(|e| e.0);
+    let repo = resolve_repo(&state, &username, &repo_name, uid).await?;
 
     let repo_path = state.config.repo_path(&username, &repo_name);
     let commits = git::get_commit_log(&repo_path, &branch, 50)?;

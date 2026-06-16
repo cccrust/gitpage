@@ -119,7 +119,7 @@
 
 ## 實作進度
 
-- **v0.1** — Rust 後端 API + Git Server (CLI + REST 測試)
+- **v0.1** — Rust 後端 API + Git Server (CLI + REST 測試) ✅
 - **v0.2** — React 前端 + Markdown 渲染 + 完整 UI ✅
-- **v0.3** — Pages 功能
-- **v0.4** — 強化功能
+- **v0.3** — Pages 功能 ✅
+- **v0.4** — 強化功能 (private repo, user profile, repo settings, search) ✅

@@ -121,18 +121,45 @@ for c in d['commits']:
     print(' -', c['sha'], c['message'].strip())
 "
 
-# 17. Delete repo
+# 17. Push an index.html for pages test
+cd /tmp/gptest-clone
+echo '<!DOCTYPE html><html><body><h1>Hello Pages</h1></body></html>' > index.html
+git add index.html
+git commit -q -m "Add index.html"
+git push origin main 2>&1
+cd - > /dev/null
+
+# 18. Enable Pages
+curl -s -X PUT http://localhost:8080/api/pages/1 \
+  -H "Authorization: Bearer $TK" \
+  -H "Content-Type: application/json" \
+  -d '{"branch":"main","source_dir":"/","enabled":true}' | python3 -m json.tool
+
+# 19. Check pages config
+curl -s http://localhost:8080/api/pages/1 | python3 -m json.tool
+
+# 20. Verify pages are served
+curl -s http://localhost:8080/pages/test/myproject/ | head -3
+
+# 21. Redeploy via API
+curl -s -X POST http://localhost:8080/api/pages/1/deploy \
+  -H "Authorization: Bearer $TK" | python3 -m json.tool
+
+# Verify pages still served
+curl -s http://localhost:8080/pages/test/myproject/ | head -3
+
+# 22. Delete repo
 curl -s -X DELETE http://localhost:8080/api/repos/1 \
   -H "Authorization: Bearer $TK" | python3 -m json.tool
 
-# 18. Verify deletion
+# 23. Verify deletion
 curl -s http://localhost:8080/api/repos -H "Authorization: Bearer $TK" | python3 -c "
 import sys,json
 d=json.load(sys.stdin)
 print('Remaining repos:', len(d['repos']))
 "
 
-# 19. Auth test (no token)
+# 24. Auth test (no token)
 curl -s -X POST http://localhost:8080/api/repos \
   -H "Content-Type: application/json" \
   -d '{"name":"shouldfail"}' | python3 -m json.tool

@@ -7,6 +7,9 @@ import NewRepoPage from './pages/NewRepoPage'
 import RepoPage from './pages/RepoPage'
 import FileViewPage from './pages/FileViewPage'
 import CommitsPage from './pages/CommitsPage'
+import PagesSettingsPage from './pages/PagesSettingsPage'
+import UserProfilePage from './pages/UserProfilePage'
+import RepoSettingsPage from './pages/RepoSettingsPage'
 
 export default function App() {
   return (
@@ -20,6 +23,9 @@ export default function App() {
           <Route path="/repo/:id" element={<RepoPage />} />
           <Route path="/repo/:id/*" element={<FileViewPage />} />
           <Route path="/repo/:id/commits/:branch" element={<CommitsPage />} />
+          <Route path="/repo/:id/pages" element={<PagesSettingsPage />} />
+          <Route path="/repo/:id/settings" element={<RepoSettingsPage />} />
+          <Route path="/u/:username" element={<UserProfilePage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Layout>

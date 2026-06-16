@@ -262,6 +262,69 @@ pub fn get_readme(repo_path: &str, branch: &str) -> Result<Option<String>, AppEr
     Ok(None)
 }
 
+pub fn deploy_pages(repo_path: &str, output_dir: &str, branch: &str, source_dir: &str) -> Result<(), AppError> {
+    let repo = git2::Repository::open_bare(repo_path)?;
+
+    let branch_ref = format!("refs/heads/{}", branch);
+    let oid = match repo.refname_to_id(&branch_ref) {
+        Ok(oid) => oid,
+        Err(_) => return Err(AppError::NotFound(format!("Branch '{}' not found", branch))),
+    };
+
+    let commit = repo.find_commit(oid)?;
+    let tree = commit.tree()?;
+
+    let clean_source = source_dir.trim_start_matches('/').trim_end_matches('/');
+    let subtree: git2::Tree = if clean_source.is_empty() {
+        tree
+    } else {
+        let entry = tree.get_path(std::path::Path::new(clean_source))
+            .map_err(|_| AppError::NotFound(format!("Source dir '{}' not found", source_dir)))?;
+        let obj = entry.to_object(&repo)?;
+        obj.peel_to_tree()?
+    };
+
+    // Clean output dir
+    let out = std::path::Path::new(output_dir);
+    if out.exists() {
+        std::fs::remove_dir_all(out)?;
+    }
+    std::fs::create_dir_all(out)?;
+
+    // Walk tree and write files
+    walk_tree_for_pages(&repo, &subtree, out, "")?;
+
+    Ok(())
+}
+
+fn walk_tree_for_pages(repo: &git2::Repository, tree: &git2::Tree, out_dir: &std::path::Path, prefix: &str) -> Result<(), AppError> {
+    for entry in tree.iter() {
+        let name = String::from_utf8_lossy(entry.name_bytes()).to_string();
+        let entry_path = if prefix.is_empty() {
+            name.clone()
+        } else {
+            format!("{}/{}", prefix, name)
+        };
+        let dest = out_dir.join(&entry_path);
+
+        match entry.kind() {
+            Some(git2::ObjectType::Tree) => {
+                let obj = entry.to_object(repo)?;
+                let subtree = obj.peel_to_tree()?;
+                std::fs::create_dir_all(&dest)?;
+                walk_tree_for_pages(repo, &subtree, out_dir, &entry_path)?;
+            }
+            Some(git2::ObjectType::Blob) => {
+                let obj = entry.to_object(repo)?;
+                let blob = obj.peel_to_blob()?;
+                std::fs::write(&dest, blob.content())?;
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
 pub fn get_commit_log(repo_path: &str, branch: &str, limit: usize) -> Result<Vec<(String, String, String, String)>, AppError> {
     let repo = git2::Repository::open_bare(repo_path)?;
 

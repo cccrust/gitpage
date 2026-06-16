@@ -1,4 +1,5 @@
-use axum::{extract::State, http::StatusCode, Json};
+use axum::{extract::{Path, State}, http::StatusCode, Json};
+use serde::Deserialize;
 use serde_json::{json, Value};
 use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use argon2::password_hash::SaltString;
@@ -82,4 +83,49 @@ pub async fn me(
         .ok_or_else(|| AppError::NotFound("使用者不存在".into()))?;
     let user_public: UserPublic = user.into();
     Ok(Json(json!({ "user": user_public })))
+}
+
+#[derive(Deserialize)]
+pub struct UpdateProfileRequest {
+    pub bio: Option<String>,
+    pub avatar_url: Option<String>,
+}
+
+pub async fn get_user_profile(
+    State(state): State<AppState>,
+    Path(username): Path<String>,
+    _user_id: Option<axum::Extension<i64>>,
+) -> Result<Json<Value>, AppError> {
+    let user = state.db.find_user_by_username(&username).await?
+        .ok_or_else(|| AppError::NotFound("使用者不存在".into()))?;
+    let uid = user.id;
+    let user_public: UserPublic = user.into();
+
+    let repos = state.db.list_public_user_repos(uid).await?;
+
+    Ok(Json(json!({
+        "user": user_public,
+        "repos": repos
+    })))
+}
+
+pub async fn update_profile(
+    State(state): State<AppState>,
+    axum::Extension(user_id): axum::Extension<i64>,
+    Path(username): Path<String>,
+    Json(req): Json<UpdateProfileRequest>,
+) -> Result<Json<Value>, AppError> {
+    let user = state.db.find_user_by_id(user_id).await?
+        .ok_or_else(|| AppError::NotFound("使用者不存在".into()))?;
+
+    if user.username != username {
+        return Err(AppError::Unauthorized("不能修改其他使用者的資料".into()));
+    }
+
+    let bio = req.bio.unwrap_or(user.bio);
+    let avatar_url = req.avatar_url.unwrap_or(user.avatar_url);
+
+    state.db.update_user(user_id, &bio, &avatar_url).await?;
+
+    Ok(Json(json!({ "success": true })))
 }

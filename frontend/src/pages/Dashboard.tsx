@@ -4,6 +4,9 @@ import { listRepos, type Repo, isLoggedIn } from '../api'
 
 export default function Dashboard() {
   const [repos, setRepos] = useState<Repo[]>([])
+  const [searchQ, setSearchQ] = useState('')
+  const [searchResults, setSearchResults] = useState<Repo[] | null>(null)
+  const [searching, setSearching] = useState(false)
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
   const loggedIn = isLoggedIn()
@@ -18,6 +21,19 @@ export default function Dashboard() {
       .catch(e => setErr(e.message))
       .finally(() => setLoading(false))
   }, [loggedIn])
+
+  const doSearch = async () => {
+    if (!searchQ.trim()) { setSearchResults(null); return }
+    setSearching(true)
+    try {
+      const r = await fetch(`/api/repos/search?q=${encodeURIComponent(searchQ)}`)
+      const d = await r.json()
+      setSearchResults(d.repos)
+    } catch { setSearchResults([]) }
+    setSearching(false)
+  }
+
+  const displayRepos = searchResults !== null ? searchResults : repos
 
   if (!loggedIn) {
     return (
@@ -45,14 +61,27 @@ export default function Dashboard() {
         <Link to="/new" className="btn-sm">+ New</Link>
       </div>
 
-      {repos.length === 0 ? (
+      <div className="search-bar" style={{ marginBottom: 12 }}>
+        <input
+          type="text"
+          placeholder="Search public repos..."
+          value={searchQ}
+          onChange={e => setSearchQ(e.target.value)}
+          onKeyUp={e => e.key === 'Enter' && doSearch()}
+          style={{ fontSize: 14, padding: '8px 10px', width: '100%', background: '#111', border: '1px solid #333', borderRadius: 6, color: '#e0e0e0' }}
+        />
+      </div>
+
+      {searching && <div className="loading" style={{ padding: 8 }}>Searching...</div>}
+
+      {displayRepos.length === 0 ? (
         <div className="empty-state">
-          <p>No repositories yet</p>
-          <Link to="/new" style={{ fontSize: 14, textDecoration: 'underline' }}>Create one</Link>
+          <p>{searchResults !== null ? 'No results' : 'No repositories yet'}</p>
+          {searchResults === null && <Link to="/new" style={{ fontSize: 14, textDecoration: 'underline' }}>Create one</Link>}
         </div>
       ) : (
-        repos.map(r => (
-          <Link key={r.id} to={`/${r.user_id === 1 ? 'me' : r.id}/${r.name}`} className="repo-card">
+        displayRepos.map(r => (
+          <Link key={r.id} to={`/repo/${r.id}`} className="repo-card">
             <div className="name">{r.name}</div>
             {r.description && <div className="desc">{r.description}</div>}
             <div className="meta">

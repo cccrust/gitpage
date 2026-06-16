@@ -51,12 +51,14 @@ export default function RepoPage() {
     <div className="repo-page">
       <div className="repo-header">
         <div className="breadcrumb">
-          <Link to="/">~</Link> / <strong>{repo.name}</strong>
+          <Link to="/">~</Link> / <Link to={`/u/${username}`} style={{ color: '#7c7c7c' }}>{username}</Link> / <strong>{repo.name}</strong>
         </div>
         <h1>{repo.name}</h1>
         {repo.description && <p className="desc">{repo.description}</p>}
         <div className="actions">
           <Link to={`/repo/${repo.id}/commits/${branch}`} className="btn-sm">Commits</Link>
+          <Link to={`/repo/${repo.id}/pages`} className="btn-sm">Pages</Link>
+          <Link to={`/repo/${repo.id}/settings`} className="btn-sm">Settings</Link>
           <span style={{ fontSize: 12, color: '#7c7c7c', padding: '6px 0' }}>
             {repo.is_private ? 'Private' : 'Public'}
           </span>
