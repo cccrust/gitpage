@@ -17,11 +17,11 @@ pub enum AppError {
 impl std::fmt::Display for AppError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            AppError::NotFound(msg) => write!(f, "Not found: {}", msg),
-            AppError::Unauthorized(msg) => write!(f, "Unauthorized: {}", msg),
-            AppError::BadRequest(msg) => write!(f, "Bad request: {}", msg),
-            AppError::Internal(msg) => write!(f, "Internal error: {}", msg),
-            AppError::Conflict(msg) => write!(f, "Conflict: {}", msg),
+            AppError::NotFound(msg) => write!(f, "找不到: {}", msg),
+            AppError::Unauthorized(msg) => write!(f, "未授權: {}", msg),
+            AppError::BadRequest(msg) => write!(f, "請求錯誤: {}", msg),
+            AppError::Internal(msg) => write!(f, "伺服器錯誤: {}", msg),
+            AppError::Conflict(msg) => write!(f, "衝突: {}", msg),
         }
     }
 }
@@ -41,18 +41,18 @@ impl IntoResponse for AppError {
 
 impl From<rusqlite::Error> for AppError {
     fn from(e: rusqlite::Error) -> Self {
-        AppError::Internal(format!("Database error: {}", e))
+        AppError::Internal(format!("資料庫錯誤: {}", e))
     }
 }
 
 impl From<git2::Error> for AppError {
     fn from(e: git2::Error) -> Self {
-        AppError::Internal(format!("Git error: {}", e))
+        AppError::Internal(format!("Git 錯誤: {}", e))
     }
 }
 
 impl From<std::io::Error> for AppError {
     fn from(e: std::io::Error) -> Self {
-        AppError::Internal(format!("IO error: {}", e))
+        AppError::Internal(format!("IO 錯誤: {}", e))
     }
 }

@@ -12,7 +12,7 @@ export default function DeployLogsPage() {
   useEffect(() => {
     if (!id) return
     const numId = parseInt(id)
-    if (isNaN(numId)) { setErr('Invalid ID'); setLoading(false); return }
+    if (isNaN(numId)) { setErr('ID 無效'); setLoading(false); return }
 
     Promise.all([
       getRepo(numId),
@@ -26,10 +26,10 @@ export default function DeployLogsPage() {
       .finally(() => setLoading(false))
   }, [id])
 
-  if (!id) return <div className="error-box">Missing repo ID</div>
+  if (!id) return <div className="error-box">缺少倉庫 ID</div>
   if (loading) return <div className="loading">Loading...</div>
   if (err) return <div className="error-box">{err}</div>
-  if (!repo) return <div className="error-box">Repository not found</div>
+  if (!repo) return <div className="error-box">倉庫不存在</div>
 
   return (
     <div className="settings-page" style={{ maxWidth: 700 }}>

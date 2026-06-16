@@ -271,6 +271,15 @@ impl Database {
 
     // ── User update ──
 
+    pub async fn change_password(&self, id: i64, password_hash: &str) -> Result<(), rusqlite::Error> {
+        let conn = self.conn.lock().await;
+        conn.execute(
+            "UPDATE users SET password_hash = ?1 WHERE id = ?2",
+            params![password_hash, id],
+        )?;
+        Ok(())
+    }
+
     pub async fn update_user(&self, id: i64, bio: &str, avatar_url: &str) -> Result<(), rusqlite::Error> {
         let conn = self.conn.lock().await;
         conn.execute(

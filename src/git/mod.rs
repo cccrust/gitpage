@@ -29,7 +29,7 @@ pub fn init_bare_repo(path: &str) -> Result<(), AppError> {
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(AppError::Internal(format!("Failed to init bare repo: {}", stderr)));
+        return Err(AppError::Internal(format!("初始化 bare repo 失敗: {}", stderr)));
     }
 
     let output = Command::new(git_backend_path())
@@ -39,7 +39,7 @@ pub fn init_bare_repo(path: &str) -> Result<(), AppError> {
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(AppError::Internal(format!("Failed to set http.receivepack: {}", stderr)));
+        return Err(AppError::Internal(format!("設定 http.receivepack 失敗: {}", stderr)));
     }
 
     Ok(())
@@ -268,7 +268,7 @@ pub fn deploy_pages(repo_path: &str, output_dir: &str, branch: &str, source_dir:
     let branch_ref = format!("refs/heads/{}", branch);
     let oid = match repo.refname_to_id(&branch_ref) {
         Ok(oid) => oid,
-        Err(_) => return Err(AppError::NotFound(format!("Branch '{}' not found", branch))),
+        Err(_) => return Err(        AppError::NotFound(format!("找不到分支 '{}'", branch))),
     };
 
     let commit = repo.find_commit(oid)?;
@@ -279,7 +279,7 @@ pub fn deploy_pages(repo_path: &str, output_dir: &str, branch: &str, source_dir:
         tree
     } else {
         let entry = tree.get_path(std::path::Path::new(clean_source))
-            .map_err(|_| AppError::NotFound(format!("Source dir '{}' not found", source_dir)))?;
+            .map_err(|_|         AppError::NotFound(format!("找不到原始碼目錄 '{}'", source_dir)))?;
         let obj = entry.to_object(&repo)?;
         obj.peel_to_tree()?
     };

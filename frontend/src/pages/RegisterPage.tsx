@@ -17,7 +17,7 @@ export default function RegisterPage() {
       setToken(res.token)
       nav('/')
     } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : 'Registration failed')
+      setErr(e instanceof Error ? e.message : '註冊失敗')
     }
   }
 

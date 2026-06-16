@@ -19,7 +19,7 @@ export default function RepoSettingsPage() {
   useEffect(() => {
     if (!id) return
     const numId = parseInt(id)
-    if (isNaN(numId)) { setErr('Invalid ID'); setLoading(false); return }
+    if (isNaN(numId)) { setErr('ID 無效'); setLoading(false); return }
 
     getRepo(numId)
       .then(r => {
@@ -47,10 +47,10 @@ export default function RepoSettingsPage() {
         body: JSON.stringify({ description: desc, is_private: isPrivate }),
       })
       const d = await res.json()
-      if (!res.ok) throw new Error(d.error || 'Save failed')
+      if (!res.ok) throw new Error(d.error || '儲存失敗')
       setMsg('Saved')
     } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : 'Save failed')
+      setErr(e instanceof Error ? e.message : '儲存失敗')
     }
     setSaving(false)
   }
@@ -63,14 +63,14 @@ export default function RepoSettingsPage() {
       await deleteRepo(parseInt(id))
       nav('/')
     } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : 'Delete failed')
+      setErr(e instanceof Error ? e.message : '刪除失敗')
     }
     setDeleting(false)
   }
 
   if (loading) return <div className="loading">Loading...</div>
   if (err && !repo) return <div className="error-box">{err}</div>
-  if (!repo) return <div className="error-box">Not found</div>
+  if (!repo) return <div className="error-box">找不到</div>
 
   return (
     <div className="settings-page">

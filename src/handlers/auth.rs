@@ -91,6 +91,41 @@ pub struct UpdateProfileRequest {
     pub avatar_url: Option<String>,
 }
 
+#[derive(Deserialize)]
+pub struct ChangePasswordRequest {
+    pub current_password: String,
+    pub new_password: String,
+}
+
+pub async fn change_password(
+    State(state): State<AppState>,
+    axum::Extension(user_id): axum::Extension<i64>,
+    Json(req): Json<ChangePasswordRequest>,
+) -> Result<Json<Value>, AppError> {
+    if req.new_password.len() < 6 {
+        return Err(AppError::BadRequest("新密碼至少需要 6 個字元".into()));
+    }
+
+    let user = state.db.find_user_by_id(user_id).await?
+        .ok_or_else(|| AppError::NotFound("使用者不存在".into()))?;
+
+    let parsed_hash = PasswordHash::new(&user.password_hash)
+        .map_err(|e| AppError::Internal(format!("解析雜湊錯誤: {}", e)))?;
+    let argon2 = Argon2::default();
+    argon2.verify_password(req.current_password.as_bytes(), &parsed_hash)
+        .map_err(|_| AppError::Unauthorized("目前密碼錯誤".into()))?;
+
+    let salt = SaltString::generate(&mut OsRng);
+    let new_hash = argon2
+        .hash_password(req.new_password.as_bytes(), &salt)
+        .map_err(|e| AppError::Internal(format!("Hash error: {}", e)))?
+        .to_string();
+
+    state.db.change_password(user_id, &new_hash).await?;
+
+    Ok(Json(json!({ "success": true })))
+}
+
 pub async fn get_user_profile(
     State(state): State<AppState>,
     Path(username): Path<String>,

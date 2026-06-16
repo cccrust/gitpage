@@ -16,7 +16,7 @@ export default function LoginPage() {
       setToken(res.token)
       nav('/')
     } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : 'Login failed')
+      setErr(e instanceof Error ? e.message : '登入失敗')
     }
   }
 

@@ -14,6 +14,7 @@ import CommitsPage from './pages/CommitsPage'
 import PagesSettingsPage from './pages/PagesSettingsPage'
 import AppSettingsPage from './pages/AppSettingsPage'
 import UserProfilePage from './pages/UserProfilePage'
+import UserSettingsPage from './pages/UserSettingsPage'
 import RepoSettingsPage from './pages/RepoSettingsPage'
 import RepoSSHKeysPage from './pages/RepoSSHKeysPage'
 
@@ -39,6 +40,7 @@ export default function App() {
           <Route path="/repo/:id/settings" element={<RepoSettingsPage />} />
           <Route path="/repo/:id/ssh" element={<RepoSSHKeysPage />} />
           <Route path="/u/:username" element={<UserProfilePage />} />
+          <Route path="/settings" element={<UserSettingsPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Layout>

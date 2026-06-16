@@ -45,11 +45,11 @@ pub async fn get_apps_config(
 
 async fn do_deploy(state: &AppState, repo_id: i64, user_id: i64) -> Result<Json<Value>, AppError> {
     let repo = state.db.find_repo_by_id(repo_id).await?
-        .ok_or_else(|| AppError::NotFound("Repository not found".into()))?;
+        .ok_or_else(|| AppError::NotFound("倉庫不存在".into()))?;
     let user = state.db.find_user_by_id(user_id).await?
-        .ok_or_else(|| AppError::NotFound("User not found".into()))?;
+        .ok_or_else(|| AppError::NotFound("使用者不存在".into()))?;
     let cfg = state.db.get_apps_config(repo_id).await?
-        .ok_or_else(|| AppError::NotFound("Apps config not found".into()))?;
+        .ok_or_else(|| AppError::NotFound("App 設定不存在".into()))?;
 
     let repo_path = state.config.repo_path(&user.username, &repo.name);
     let workspace = state.config.app_workspace_dir(&user.username, &repo.name);
@@ -125,10 +125,10 @@ pub async fn deploy_apps_handler(
     Path(repo_id): Path<i64>,
 ) -> Result<Json<Value>, AppError> {
     let repo = state.db.find_repo_by_id(repo_id).await?
-        .ok_or_else(|| AppError::NotFound("Repository not found".into()))?;
+        .ok_or_else(|| AppError::NotFound("倉庫不存在".into()))?;
 
     if repo.user_id != user_id {
-        return Err(AppError::Unauthorized("无权操作".into()));
+        return Err(AppError::Unauthorized("無權限操作".into()));
     }
 
     do_deploy(&state, repo_id, user_id).await
@@ -140,10 +140,10 @@ pub async fn delete_apps_handler(
     Path(repo_id): Path<i64>,
 ) -> Result<Json<Value>, AppError> {
     let repo = state.db.find_repo_by_id(repo_id).await?
-        .ok_or_else(|| AppError::NotFound("Repository not found".into()))?;
+        .ok_or_else(|| AppError::NotFound("倉庫不存在".into()))?;
 
     if repo.user_id != user_id {
-        return Err(AppError::Unauthorized("无权操作".into()));
+        return Err(AppError::Unauthorized("無權限操作".into()));
     }
 
     crate::deploy::stop_app(&state.app_manager, repo_id).await;
@@ -166,10 +166,10 @@ pub async fn get_deploy_log(
     Path((repo_id, deploy_id)): Path<(i64, i64)>,
 ) -> Result<Json<Value>, AppError> {
     let log = state.db.get_deploy_log(deploy_id).await?
-        .ok_or_else(|| AppError::NotFound("Deploy log not found".into()))?;
+        .ok_or_else(|| AppError::NotFound("部署日誌不存在".into()))?;
 
     if log.repo_id != repo_id {
-        return Err(AppError::NotFound("Deploy log not found for this repo".into()));
+        return Err(AppError::NotFound("該部署日誌不屬於此倉庫".into()));
     }
 
     Ok(Json(json!({ "deploy_log": log })))

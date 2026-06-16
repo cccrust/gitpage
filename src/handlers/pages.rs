@@ -51,7 +51,7 @@ pub async fn update_pages_config(
     // Auto-deploy if enabled
     if enabled {
         let user = state.db.find_user_by_id(user_id).await?
-            .ok_or_else(|| AppError::NotFound("User not found".into()))?;
+            .ok_or_else(|| AppError::NotFound("使用者不存在".into()))?;
         let repo_path = state.config.repo_path(&user.username, &repo.name);
         let pages_dir = state.config.pages_dir(&user.username, &repo.name);
         if let Err(e) = git::deploy_pages(&repo_path, &pages_dir, &branch, &source_dir) {
@@ -71,14 +71,14 @@ pub async fn deploy_pages_handler(
     Path(repo_id): Path<i64>,
 ) -> Result<Json<Value>, AppError> {
     let repo = state.db.find_repo_by_id(repo_id).await?
-        .ok_or_else(|| AppError::NotFound("Repository not found".into()))?;
+        .ok_or_else(|| AppError::NotFound("倉庫不存在".into()))?;
 
     if repo.user_id != user_id {
         return Err(AppError::Unauthorized("无权操作".into()));
     }
 
     let user = state.db.find_user_by_id(user_id).await?
-        .ok_or_else(|| AppError::NotFound("User not found".into()))?;
+        .ok_or_else(|| AppError::NotFound("使用者不存在".into()))?;
 
     let cfg = state.db.get_pages_config(repo_id).await?;
     let (branch, source_dir) = match cfg {

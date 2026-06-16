@@ -21,7 +21,7 @@ export default function AppSettingsPage() {
   useEffect(() => {
     if (!id) return
     const numId = parseInt(id)
-    if (isNaN(numId)) { setErr('Invalid ID'); setLoading(false); return }
+    if (isNaN(numId)) { setErr('ID 無效'); setLoading(false); return }
 
     setLoading(true)
     Promise.all([
@@ -68,7 +68,7 @@ export default function AppSettingsPage() {
       const appRes = await getAppsConfig(parseInt(id))
       setStatus(appRes)
     } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : 'Save failed')
+      setErr(e instanceof Error ? e.message : '儲存失敗')
     }
     setSaving(false)
   }
@@ -84,14 +84,14 @@ export default function AppSettingsPage() {
       const appRes = await getAppsConfig(parseInt(id))
       setStatus(appRes)
     } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : 'Deploy failed')
+      setErr(e instanceof Error ? e.message : '部署失敗')
     }
     setDeploying(false)
   }
 
   if (loading) return <div className="loading">Loading...</div>
   if (err && !repo) return <div className="error-box">{err}</div>
-  if (!repo) return <div className="error-box">Repository not found</div>
+  if (!repo) return <div className="error-box">倉庫不存在</div>
 
   return (
     <div className="settings-page">

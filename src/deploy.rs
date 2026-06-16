@@ -48,7 +48,7 @@ impl AppProcessManager {
             }
             port += 1;
         }
-        Err(AppError::Internal("No available ports".into()))
+        Err(AppError::Internal("沒有可用的埠號".into()))
     }
 
     pub async fn register(&self, proc: AppProcess) {
@@ -93,7 +93,7 @@ pub fn detect_project_type(workspace_dir: &str) -> Result<ProjectType, AppError>
     }
 
     Err(AppError::BadRequest(
-        "Unsupported project type. Only Node.js (package.json) and Rust (Cargo.toml) are supported.".into()
+        "不支援的專案類型，僅支援 Node.js (package.json) 與 Rust (Cargo.toml)".into()
     ))
 }
 

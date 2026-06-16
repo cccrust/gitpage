@@ -18,7 +18,7 @@ fn staging_base<'a>(state: &'a AppState, username: &str, repo: &str) -> String {
 
 fn safe_path(base: &str, file_path: &str) -> Result<String, AppError> {
     if file_path.contains("..") {
-        return Err(AppError::BadRequest("Path traversal not allowed".into()));
+        return Err(AppError::BadRequest("不允許的路徑跳躍".into()));
     }
     let clean = file_path.trim_start_matches('/');
     Ok(format!("{}/{}", base.trim_end_matches('/'), clean))
@@ -88,7 +88,7 @@ pub async fn tree(
     Query(query): Query<TreeQuery>,
 ) -> Result<Json<Value>, AppError> {
     let repo = state.db.find_repo_by_id(repo_id).await?
-        .ok_or_else(|| AppError::NotFound("Repository not found".into()))?;
+        .ok_or_else(|| AppError::NotFound("倉庫不存在".into()))?;
 
     let base = staging_base(&state, &username, &repo.name);
     let entries = list_staging_dir(&base, query.path.as_deref().unwrap_or("/"))?;
@@ -107,12 +107,12 @@ pub async fn raw(
     Query(query): Query<RawQuery>,
 ) -> Result<(StatusCode, [(String, String); 1], Vec<u8>), AppError> {
     let repo = state.db.find_repo_by_id(repo_id).await?
-        .ok_or_else(|| AppError::NotFound("Repository not found".into()))?;
+        .ok_or_else(|| AppError::NotFound("倉庫不存在".into()))?;
 
     let base = staging_base(&state, &username, &repo.name);
     let full = safe_path(&base, &query.path)?;
     let content = std::fs::read(&full)
-        .map_err(|_| AppError::NotFound("File not found".into()))?;
+        .map_err(|_| AppError::NotFound("檔案不存在".into()))?;
 
     let ext = StdPath::new(&query.path)
         .extension()
@@ -136,7 +136,7 @@ pub async fn write_file(
     body: axum::body::Bytes,
 ) -> Result<Json<Value>, AppError> {
     let repo = state.db.find_repo_by_id(repo_id).await?
-        .ok_or_else(|| AppError::NotFound("Repository not found".into()))?;
+        .ok_or_else(|| AppError::NotFound("倉庫不存在".into()))?;
 
     let base = staging_base(&state, &username, &repo.name);
     let full = safe_path(&base, &query.path)?;
@@ -160,7 +160,7 @@ pub async fn delete_file(
     Query(query): Query<DeleteQuery>,
 ) -> Result<Json<Value>, AppError> {
     let repo = state.db.find_repo_by_id(repo_id).await?
-        .ok_or_else(|| AppError::NotFound("Repository not found".into()))?;
+        .ok_or_else(|| AppError::NotFound("倉庫不存在".into()))?;
 
     let base = staging_base(&state, &username, &repo.name);
     let full = safe_path(&base, &query.path)?;
@@ -188,7 +188,7 @@ pub async fn mkdir(
     Query(query): Query<MkdirQuery>,
 ) -> Result<Json<Value>, AppError> {
     let repo = state.db.find_repo_by_id(repo_id).await?
-        .ok_or_else(|| AppError::NotFound("Repository not found".into()))?;
+        .ok_or_else(|| AppError::NotFound("倉庫不存在".into()))?;
 
     let base = staging_base(&state, &username, &repo.name);
     let full = safe_path(&base, &query.path)?;
@@ -210,11 +210,11 @@ pub async fn move_file(
     Query(query): Query<MoveQuery>,
 ) -> Result<Json<Value>, AppError> {
     let repo = state.db.find_repo_by_id(repo_id).await?
-        .ok_or_else(|| AppError::NotFound("Repository not found".into()))?;
+        .ok_or_else(|| AppError::NotFound("倉庫不存在".into()))?;
 
     let base = staging_base(&state, &username, &repo.name);
     if query.from.contains("..") || query.to.contains("..") {
-        return Err(AppError::BadRequest("Path traversal not allowed".into()));
+        return Err(AppError::BadRequest("不允許的路徑跳躍".into()));
     }
     let src = safe_path(&base, &query.from)?;
     let dst = safe_path(&base, &query.to)?;
@@ -232,7 +232,7 @@ pub async fn status(
     Path(repo_id): Path<i64>,
 ) -> Result<Json<Value>, AppError> {
     let repo = state.db.find_repo_by_id(repo_id).await?
-        .ok_or_else(|| AppError::NotFound("Repository not found".into()))?;
+        .ok_or_else(|| AppError::NotFound("倉庫不存在".into()))?;
 
     let base = staging_base(&state, &username, &repo.name);
     let changes = list_staging_changes(&base)?;
@@ -253,11 +253,11 @@ pub async fn commit(
     Json(body): Json<CommitBody>,
 ) -> Result<Json<Value>, AppError> {
     if body.message.trim().is_empty() {
-        return Err(AppError::BadRequest("Commit message cannot be empty".into()));
+        return Err(AppError::BadRequest("Commit 訊息不能為空".into()));
     }
 
     let repo = state.db.find_repo_by_id(repo_id).await?
-        .ok_or_else(|| AppError::NotFound("Repository not found".into()))?;
+        .ok_or_else(|| AppError::NotFound("倉庫不存在".into()))?;
 
     let bare_path = state.config.repo_path(&username, &repo.name);
     let staging_path = state.config.staging_path(&username, &repo.name);
@@ -265,7 +265,7 @@ pub async fn commit(
     // Check staging has files
     let changes = list_staging_changes(&staging_path)?;
     if changes.is_empty() {
-        return Err(AppError::BadRequest("No changes to commit".into()));
+        return Err(AppError::BadRequest("沒有變更需要提交".into()));
     }
 
     git::commit_staging(&bare_path, &staging_path, &body.message, &username, &repo.default_branch)?;

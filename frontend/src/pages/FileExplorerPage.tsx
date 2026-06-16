@@ -33,7 +33,7 @@ export default function FileExplorerPage() {
   const loadData = async () => {
     if (!id) return
     const numId = parseInt(id)
-    if (isNaN(numId)) { setErr('Invalid ID'); setLoading(false); return }
+    if (isNaN(numId)) { setErr('ID 無效'); setLoading(false); return }
 
     try {
       const r = await getRepo(numId)
@@ -50,7 +50,7 @@ export default function FileExplorerPage() {
       setPending(statusRes.pending)
       setChanges(statusRes.changes)
     } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : 'Failed to load')
+      setErr(e instanceof Error ? e.message : '載入失敗')
     }
     setLoading(false)
   }
@@ -90,7 +90,7 @@ export default function FileExplorerPage() {
       await deleteFile(parseInt(id), path)
       refresh()
     } catch (e: unknown) {
-      alert(e instanceof Error ? e.message : 'Delete failed')
+      alert(e instanceof Error ? e.message : '刪除失敗')
     }
   }
 
@@ -103,7 +103,7 @@ export default function FileExplorerPage() {
       setNewDirName('')
       refresh()
     } catch (e: unknown) {
-      alert(e instanceof Error ? e.message : 'Failed to create directory')
+      alert(e instanceof Error ? e.message : '建立目錄失敗')
     }
   }
 
@@ -120,7 +120,7 @@ export default function FileExplorerPage() {
       }
       refresh()
     } catch (e: unknown) {
-      alert(e instanceof Error ? e.message : 'Upload failed')
+      alert(e instanceof Error ? e.message : '上傳失敗')
     }
     setUploading(false)
     if (fileInputRef.current) fileInputRef.current.value = ''
@@ -135,17 +135,17 @@ export default function FileExplorerPage() {
       setCommitMsg('')
       refresh()
     } catch (e: unknown) {
-      alert(e instanceof Error ? e.message : 'Commit failed')
+      alert(e instanceof Error ? e.message : '提交失敗')
     }
     setCommitting(false)
   }
 
   const parts = currentPath ? currentPath.split('/').filter(Boolean) : []
 
-  if (!id) return <div className="error-box">Missing repo ID</div>
+  if (!id) return <div className="error-box">缺少倉庫 ID</div>
   if (loading) return <div className="loading">Loading...</div>
   if (err) return <div className="error-box">{err}</div>
-  if (!repo) return <div className="error-box">Repository not found</div>
+  if (!repo) return <div className="error-box">倉庫不存在</div>
 
   return (
     <div className="file-explorer-page">

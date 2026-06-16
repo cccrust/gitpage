@@ -16,7 +16,7 @@ pub async fn serve_pages(pages_dir: &str, path: &str) -> Response {
     };
 
     if !target.exists() || !target.is_file() {
-        return (StatusCode::NOT_FOUND, "Page not found").into_response();
+        return (StatusCode::NOT_FOUND, "頁面不存在").into_response();
     }
 
     match tokio::fs::read(&target).await {
@@ -27,6 +27,6 @@ pub async fn serve_pages(pages_dir: &str, path: &str) -> Response {
                 .body(axum::body::Body::from(content))
                 .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
         }
-        Err(_) => (StatusCode::NOT_FOUND, "Page not found").into_response(),
+        Err(_) => (StatusCode::NOT_FOUND, "頁面不存在").into_response(),
     }
 }

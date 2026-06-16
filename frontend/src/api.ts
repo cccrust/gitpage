@@ -332,3 +332,11 @@ export function addSshKey(repoId: number, name: string, publicKey: string) {
 export function deleteSshKey(repoId: number, keyId: number) {
   return request<{ success: boolean }>('DELETE', `/api/repos/${repoId}/ssh-keys/${keyId}`)
 }
+
+export function changePassword(currentPassword: string, newPassword: string) {
+  return request<{ success: boolean }>('PUT', '/api/auth/password', { current_password: currentPassword, new_password: newPassword })
+}
+
+export function updateProfile(username: string, bio: string, avatarUrl: string) {
+  return request<{ success: boolean }>('PUT', `/api/users/${username}/profile`, { bio, avatar_url: avatarUrl })
+}

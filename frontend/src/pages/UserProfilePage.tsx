@@ -25,7 +25,7 @@ export default function UserProfilePage() {
 
   if (loading) return <div className="loading">Loading...</div>
   if (err) return <div className="error-box">{err}</div>
-  if (!profile) return <div className="error-box">User not found</div>
+  if (!profile) return <div className="error-box">使用者不存在</div>
 
   return (
     <div className="profile-page">

@@ -16,7 +16,7 @@ export default function NewRepoPage() {
       const res = await createRepo(name, desc || undefined, priv)
       nav(`/repo/${res.repo.id}`)
     } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : 'Failed to create repository')
+      setErr(e instanceof Error ? e.message : '建立倉庫失敗')
     }
   }
 

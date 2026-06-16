@@ -19,7 +19,7 @@ pub struct AddSshKeyRequest {
 fn validate_public_key(key: &str) -> Result<(), AppError> {
     let trimmed = key.trim();
     if trimmed.is_empty() {
-        return Err(AppError::BadRequest("Public key is required".into()));
+        return Err(AppError::BadRequest("請輸入 SSH Public Key".into()));
     }
     let first_space = trimmed.find(' ');
     let prefix = match first_space {
@@ -31,7 +31,7 @@ fn validate_public_key(key: &str) -> Result<(), AppError> {
         && !prefix.starts_with("ecdsa-sha2-")
     {
         return Err(AppError::BadRequest(
-            "Invalid SSH public key format. Must start with ssh-rsa, ssh-ed25519, or ecdsa-sha2-".into(),
+            "SSH Public Key 格式錯誤，開頭須為 ssh-rsa、ssh-ed25519 或 ecdsa-sha2-".into(),
         ));
     }
     Ok(())
@@ -43,10 +43,10 @@ pub async fn list_keys(
     axum::Extension(user_id): axum::Extension<i64>,
 ) -> Result<Json<Value>, AppError> {
     let repo = state.db.find_repo_by_id(repo_id).await?
-        .ok_or_else(|| AppError::NotFound("Repository not found".into()))?;
+        .ok_or_else(|| AppError::NotFound("倉庫不存在".into()))?;
 
     if repo.user_id != user_id {
-        return Err(AppError::Unauthorized("Access denied".into()));
+        return Err(AppError::Unauthorized("無權限操作".into()));
     }
 
     let keys = state.db.list_ssh_keys(repo_id).await?;
@@ -60,10 +60,10 @@ pub async fn add_key(
     Json(req): Json<AddSshKeyRequest>,
 ) -> Result<Json<Value>, AppError> {
     let repo = state.db.find_repo_by_id(repo_id).await?
-        .ok_or_else(|| AppError::NotFound("Repository not found".into()))?;
+        .ok_or_else(|| AppError::NotFound("倉庫不存在".into()))?;
 
     if repo.user_id != user_id {
-        return Err(AppError::Unauthorized("Access denied".into()));
+        return Err(AppError::Unauthorized("無權限操作".into()));
     }
 
     validate_public_key(&req.public_key)?;
@@ -83,15 +83,15 @@ pub async fn delete_key(
     axum::Extension(user_id): axum::Extension<i64>,
 ) -> Result<Json<Value>, AppError> {
     let repo = state.db.find_repo_by_id(repo_id).await?
-        .ok_or_else(|| AppError::NotFound("Repository not found".into()))?;
+        .ok_or_else(|| AppError::NotFound("倉庫不存在".into()))?;
 
     if repo.user_id != user_id {
-        return Err(AppError::Unauthorized("Access denied".into()));
+        return Err(AppError::Unauthorized("無權限操作".into()));
     }
 
     let deleted = state.db.delete_ssh_key(key_id, user_id).await?;
     if !deleted {
-        return Err(AppError::NotFound("SSH key not found".into()));
+        return Err(AppError::NotFound("SSH Key 不存在".into()));
     }
 
     if let Err(e) = regenerate_authorized_keys(&state.db).await {

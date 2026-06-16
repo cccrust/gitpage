@@ -28,7 +28,7 @@ export default function FileViewPage() {
     setPath(p)
 
     const numId = parseInt(id)
-    if (isNaN(numId)) { setErr('Invalid ID'); setLoading(false); return }
+    if (isNaN(numId)) { setErr('ID 無效'); setLoading(false); return }
 
     // Clear stale state before async ops
     setIsDir(false)
@@ -72,7 +72,7 @@ export default function FileViewPage() {
 
   if (loading) return <div className="loading">Loading...</div>
   if (err) return <div className="error-box">{err}</div>
-  if (!repo) return <div className="error-box">Not found</div>
+  if (!repo) return <div className="error-box">找不到</div>
 
   return (
     <div className="repo-page">

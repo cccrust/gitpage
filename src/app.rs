@@ -85,6 +85,7 @@ pub fn create_app(state: AppState) -> Router {
         .route("/api/auth/register", post(handlers::auth::register))
         .route("/api/auth/login", post(handlers::auth::login))
         .route("/api/auth/me", get(handlers::auth::me))
+        .route("/api/auth/password", put(handlers::auth::change_password))
         .route("/api/repos", get(handlers::repos::list_user_repos))
         .route("/api/repos", post(handlers::repos::create_repo))
         .route("/api/repos/:id", get(handlers::repos::get_repo_by_id))
@@ -143,7 +144,7 @@ async fn fallback_handler(
             let repo_path = state.config.repo_path(username, repo_name);
 
             if !crate::git::repo_exists(&repo_path) {
-                return (StatusCode::NOT_FOUND, "Repository not found").into_response();
+                return (StatusCode::NOT_FOUND, "倉庫不存在").into_response();
             }
 
             let path_info = format!("/{}/{}.git/{}", username, repo_name, subpath);
@@ -211,11 +212,11 @@ async fn fallback_handler(
 
             let user = match state.db.find_user_by_username(username).await {
                 Ok(Some(u)) => u,
-                _ => return (StatusCode::NOT_FOUND, "User not found").into_response(),
+                _ => return (StatusCode::NOT_FOUND, "使用者不存在").into_response(),
             };
             let repo = match state.db.find_repo_by_name(user.id, repo_name).await {
                 Ok(Some(r)) => r,
-                _ => return (StatusCode::NOT_FOUND, "Repository not found").into_response(),
+                _ => return (StatusCode::NOT_FOUND, "倉庫不存在").into_response(),
             };
 
             if let Some(proc) = state.app_manager.get(repo.id).await {
@@ -236,7 +237,7 @@ async fn fallback_handler(
 
                     let reqwest_resp = match client.execute(reqwest_req).await {
                         Ok(r) => r,
-                        Err(e) => return (StatusCode::BAD_GATEWAY, format!("Proxy error: {}", e)).into_response(),
+                        Err(e) => return (StatusCode::BAD_GATEWAY, format!("代理錯誤: {}", e)).into_response(),
                     };
 
                     let status = reqwest_resp.status();
@@ -248,7 +249,7 @@ async fn fallback_handler(
                         .to_string();
                     let resp_body = match reqwest_resp.bytes().await {
                         Ok(b) => b,
-                        Err(_) => return (StatusCode::BAD_GATEWAY, "Failed to read upstream body").into_response(),
+                        Err(_) => return (StatusCode::BAD_GATEWAY, "讀取上游回應失敗").into_response(),
                     };
 
                     let mut resp = Response::builder().status(status);
@@ -258,7 +259,7 @@ async fn fallback_handler(
                         .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response());
                 }
             }
-            return (StatusCode::BAD_GATEWAY, "App is not running").into_response();
+            return (StatusCode::BAD_GATEWAY, "App 未在執行").into_response();
         }
     }
 
@@ -296,7 +297,7 @@ async fn fallback_handler(
         }
     }
 
-    (StatusCode::NOT_FOUND, "Not found").into_response()
+    (StatusCode::NOT_FOUND, "找不到頁面").into_response()
 }
 
 pub(crate) async fn auto_deploy_pages(state: AppState, username: String, repo_name: String) {

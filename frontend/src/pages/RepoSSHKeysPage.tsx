@@ -27,7 +27,7 @@ export default function RepoSSHKeysPage() {
   useEffect(() => {
     if (!id) return
     const numId = parseInt(id)
-    if (isNaN(numId)) { setErr('Invalid ID'); setLoading(false); return }
+    if (isNaN(numId)) { setErr('ID 無效'); setLoading(false); return }
 
     loadData(numId)
       .catch(e => setErr(e.message))
@@ -47,7 +47,7 @@ export default function RepoSSHKeysPage() {
       setAddMsg('SSH key added.')
       await loadData(parseInt(id))
     } catch (e: unknown) {
-      setAddErr(e instanceof Error ? e.message : 'Failed to add key')
+      setAddErr(e instanceof Error ? e.message : '新增金鑰失敗')
     }
     setAdding(false)
   }
@@ -59,14 +59,14 @@ export default function RepoSSHKeysPage() {
       await deleteSshKey(parseInt(id), keyId)
       await loadData(parseInt(id))
     } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : 'Failed to delete key')
+      setErr(e instanceof Error ? e.message : '刪除金鑰失敗')
     }
   }
 
-  if (!id) return <div className="error-box">Missing repo ID</div>
+  if (!id) return <div className="error-box">缺少倉庫 ID</div>
   if (loading) return <div className="loading">Loading...</div>
   if (err) return <div className="error-box">{err}</div>
-  if (!repo) return <div className="error-box">Repository not found</div>
+  if (!repo) return <div className="error-box">倉庫不存在</div>
 
   return (
     <div className="settings-page" style={{ maxWidth: 600 }}>
@@ -114,7 +114,7 @@ export default function RepoSSHKeysPage() {
             {keys.map(k => (
               <div key={k.id} className="ssh-key-entry">
                 <div className="ssh-key-info">
-                  <span className="ssh-key-name">{k.name || '(unnamed)'}</span>
+                  <span className="ssh-key-name">{k.name || '(未命名)'}</span>
                   <span className="ssh-key-fingerprint">{k.public_key.slice(0, 50)}...</span>
                   <span className="ssh-key-date">{k.created_at}</span>
                 </div>

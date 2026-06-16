@@ -14,7 +14,7 @@ export default function DeployLogDetailPage() {
     const numId = parseInt(id)
     const numDeployId = parseInt(deployId)
     if (isNaN(numId) || isNaN(numDeployId)) {
-      setErr('Invalid ID')
+      setErr('ID 無效')
       setLoading(false)
       return
     }
@@ -31,10 +31,10 @@ export default function DeployLogDetailPage() {
       .finally(() => setLoading(false))
   }, [id, deployId])
 
-  if (!id) return <div className="error-box">Missing repo ID</div>
+  if (!id) return <div className="error-box">缺少倉庫 ID</div>
   if (loading) return <div className="loading">Loading...</div>
   if (err) return <div className="error-box">{err}</div>
-  if (!repo || !log) return <div className="error-box">Not found</div>
+  if (!repo || !log) return <div className="error-box">找不到</div>
 
   const statusClass = `deploy-status-${log.status}`
 
@@ -61,7 +61,7 @@ export default function DeployLogDetailPage() {
       </div>
 
       <div className="deploy-log-output">
-        <pre>{log.log_output || '(no output)'}</pre>
+        <pre>{log.log_output || '(無輸出)'}</pre>
       </div>
     </div>
   )
