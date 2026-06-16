@@ -3,7 +3,7 @@ pub mod models;
 use rusqlite::{Connection, params};
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use models::{User, Repository, PagesConfig, AppsConfig, DeployLog, SshKey};
+use models::{User, Repository, PagesConfig, AppsConfig, DeployLog, SshKey, SearchResultItem};
 
 #[derive(Clone)]
 pub struct Database {
@@ -289,27 +289,38 @@ impl Database {
         Ok(())
     }
 
-    pub async fn search_repos(&self, query: &str, limit: i64) -> Result<Vec<Repository>, rusqlite::Error> {
+    pub async fn search_repos(&self, query: &str, page: i64, page_size: i64) -> Result<(Vec<SearchResultItem>, i64), rusqlite::Error> {
         let conn = self.conn.lock().await;
         let pattern = format!("%{}%", query);
-        let mut stmt = conn.prepare(
-            "SELECT id, user_id, name, description, is_private, default_branch, created_at, updated_at
-             FROM repositories WHERE (name LIKE ?1 OR description LIKE ?1) AND is_private = 0
-             ORDER BY updated_at DESC LIMIT ?2"
+        let offset = (page - 1) * page_size;
+
+        let total: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM repositories WHERE (name LIKE ?1 OR description LIKE ?1) AND is_private = 0",
+            params![pattern],
+            |row| row.get(0),
         )?;
-        let rows = stmt.query_map(params![pattern, limit], |row| {
-            Ok(Repository {
+
+        let mut stmt = conn.prepare(
+            "SELECT r.id, r.user_id, u.username, r.name, r.description, r.is_private, r.default_branch, r.created_at, r.updated_at
+             FROM repositories r JOIN users u ON r.user_id = u.id
+             WHERE (r.name LIKE ?1 OR r.description LIKE ?1) AND r.is_private = 0
+             ORDER BY r.updated_at DESC LIMIT ?2 OFFSET ?3"
+        )?;
+        let rows = stmt.query_map(params![pattern, page_size, offset], |row| {
+            Ok(SearchResultItem {
                 id: row.get(0)?,
                 user_id: row.get(1)?,
-                name: row.get(2)?,
-                description: row.get(3)?,
-                is_private: row.get::<_, i32>(4)? != 0,
-                default_branch: row.get(5)?,
-                created_at: row.get(6)?,
-                updated_at: row.get(7)?,
+                username: row.get(2)?,
+                name: row.get(3)?,
+                description: row.get(4)?,
+                is_private: row.get(5)?,
+                default_branch: row.get(6)?,
+                created_at: row.get(7)?,
+                updated_at: row.get(8)?,
             })
         })?;
-        rows.collect()
+        let items: Vec<SearchResultItem> = rows.collect::<Result<_, _>>()?;
+        Ok((items, total))
     }
 
     pub async fn update_repo(&self, id: i64, description: &str, is_private: bool) -> Result<(), rusqlite::Error> {

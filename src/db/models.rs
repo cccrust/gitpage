@@ -112,6 +112,19 @@ pub struct SshKey {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SearchResultItem {
+    pub id: i64,
+    pub user_id: i64,
+    pub username: String,
+    pub name: String,
+    pub description: String,
+    pub is_private: bool,
+    pub default_branch: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeployLog {
     pub id: i64,
     pub repo_id: i64,

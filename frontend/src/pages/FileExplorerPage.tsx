@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { getRepo, listWorkingTree, deleteFile, mkdir, writeFile, getStatus, commitRepo, isTextFile, type Repo, type FileEntry, type WorkingTreeChange } from '../api'
+import Spinner from '../components/Spinner'
 
 export default function FileExplorerPage() {
   const { id } = useParams<{ id: string }>()
@@ -143,7 +144,7 @@ export default function FileExplorerPage() {
   const parts = currentPath ? currentPath.split('/').filter(Boolean) : []
 
   if (!id) return <div className="error-box">缺少倉庫 ID</div>
-  if (loading) return <div className="loading">Loading...</div>
+  if (loading) return <Spinner />
   if (err) return <div className="error-box">{err}</div>
   if (!repo) return <div className="error-box">倉庫不存在</div>
 

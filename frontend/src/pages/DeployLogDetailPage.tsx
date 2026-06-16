@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { getDeployLog, getRepo, type DeployLog, type Repo } from '../api'
+import Spinner from '../components/Spinner'
 
 export default function DeployLogDetailPage() {
   const { id, deployId } = useParams<{ id: string; deployId: string }>()
@@ -32,7 +33,7 @@ export default function DeployLogDetailPage() {
   }, [id, deployId])
 
   if (!id) return <div className="error-box">缺少倉庫 ID</div>
-  if (loading) return <div className="loading">Loading...</div>
+  if (loading) return <Spinner />
   if (err) return <div className="error-box">{err}</div>
   if (!repo || !log) return <div className="error-box">找不到</div>
 

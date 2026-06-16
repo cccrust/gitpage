@@ -1,6 +1,7 @@
 import { useEffect, useState, FormEvent } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { getRepo, getPagesConfig, updatePagesConfig, deployPages, type Repo, type PagesConfig } from '../api'
+import Spinner from '../components/Spinner'
 
 export default function PagesSettingsPage() {
   const { id } = useParams<{ id: string }>()
@@ -80,7 +81,7 @@ export default function PagesSettingsPage() {
     setDeploying(false)
   }
 
-  if (loading) return <div className="loading">Loading...</div>
+  if (loading) return <Spinner />
   if (err && !repo) return <div className="error-box">{err}</div>
   if (!repo) return <div className="error-box">倉庫不存在</div>
 

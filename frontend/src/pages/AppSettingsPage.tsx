@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { getRepo, getAppsConfig, updateAppsConfig, deployApps, type Repo, type AppStatusResponse } from '../api'
+import Spinner from '../components/Spinner'
 
 export default function AppSettingsPage() {
   const { id } = useParams<{ id: string }>()
@@ -89,7 +90,7 @@ export default function AppSettingsPage() {
     setDeploying(false)
   }
 
-  if (loading) return <div className="loading">Loading...</div>
+  if (loading) return <Spinner />
   if (err && !repo) return <div className="error-box">{err}</div>
   if (!repo) return <div className="error-box">倉庫不存在</div>
 

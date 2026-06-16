@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { me, updateProfile, changePassword, isLoggedIn } from '../api'
 import type { User } from '../api'
+import Spinner from '../components/Spinner'
 
 export default function UserSettingsPage() {
   const [user, setUser] = useState<User | null>(null)
@@ -53,7 +54,7 @@ export default function UserSettingsPage() {
   }
 
   if (!isLoggedIn()) return <div className="error-box">請先登入</div>
-  if (!user) return <div className="loading">Loading...</div>
+  if (!user) return <Spinner />
 
   return (
     <div className="profile-page" style={{ maxWidth: 500 }}>

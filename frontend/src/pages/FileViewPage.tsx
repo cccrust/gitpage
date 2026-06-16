@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { getRepo, getBlob, listTree, type Repo, type TreeEntry } from '../api'
 import MarkdownView from '../components/MarkdownView'
+import Spinner from '../components/Spinner'
 
 export default function FileViewPage() {
   const params = useParams()
@@ -70,7 +71,7 @@ export default function FileViewPage() {
       .finally(() => setLoading(false))
   }, [id, rest])
 
-  if (loading) return <div className="loading">Loading...</div>
+  if (loading) return <Spinner />
   if (err) return <div className="error-box">{err}</div>
   if (!repo) return <div className="error-box">找不到</div>
 

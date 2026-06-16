@@ -2,6 +2,7 @@ import { useEffect, useState, FormEvent } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { getRepo, deleteRepo, isLoggedIn, clearToken } from '../api'
 import type { Repo } from '../api'
+import Spinner from '../components/Spinner'
 
 export default function RepoSettingsPage() {
   const { id } = useParams<{ id: string }>()
@@ -68,7 +69,7 @@ export default function RepoSettingsPage() {
     setDeleting(false)
   }
 
-  if (loading) return <div className="loading">Loading...</div>
+  if (loading) return <Spinner />
   if (err && !repo) return <div className="error-box">{err}</div>
   if (!repo) return <div className="error-box">找不到</div>
 

@@ -119,14 +119,26 @@ pub async fn get_repo_by_id(
 #[derive(Deserialize)]
 pub struct SearchQuery {
     pub q: String,
+    pub page: Option<i64>,
+    pub page_size: Option<i64>,
 }
 
 pub async fn search_repos(
     State(state): State<AppState>,
     Query(query): Query<SearchQuery>,
 ) -> Result<Json<Value>, AppError> {
-    let repos = state.db.search_repos(&query.q, 20).await?;
-    Ok(Json(json!({ "repos": repos, "query": query.q })))
+    let page = query.page.unwrap_or(1).max(1);
+    let page_size = query.page_size.unwrap_or(20).clamp(1, 100);
+    let (repos, total) = state.db.search_repos(&query.q, page, page_size).await?;
+    let total_pages = (total as f64 / page_size as f64).ceil() as i64;
+    Ok(Json(json!({
+        "repos": repos,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": total_pages,
+        "query": query.q
+    })))
 }
 
 #[derive(Deserialize)]

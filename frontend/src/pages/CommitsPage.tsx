@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { getRepo, listCommits, type Repo, type CommitInfo } from '../api'
+import Spinner from '../components/Spinner'
 
 export default function CommitsPage() {
   const { id, branch } = useParams<{ id: string; branch: string }>()
@@ -27,7 +28,7 @@ export default function CommitsPage() {
       .finally(() => setLoading(false))
   }, [id, branch])
 
-  if (loading) return <div className="loading">Loading...</div>
+  if (loading) return <Spinner />
   if (err) return <div className="error-box">{err}</div>
   if (!repo) return <div className="error-box">找不到</div>
 

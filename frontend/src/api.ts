@@ -52,12 +52,22 @@ export interface User {
 export interface Repo {
   id: number
   user_id: number
+  username?: string
   name: string
   description: string
   is_private: boolean
   default_branch: string
   created_at: string
   updated_at: string
+}
+
+export interface SearchResult {
+  repos: Repo[]
+  total: number
+  page: number
+  page_size: number
+  total_pages: number
+  query: string
 }
 
 export interface TreeEntry {

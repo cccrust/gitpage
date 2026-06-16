@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { me, isLoggedIn } from '../api'
 import type { User, Repo } from '../api'
+import Spinner from '../components/Spinner'
 
 export default function UserProfilePage() {
   const { username } = useParams<{ username: string }>()
@@ -23,7 +24,7 @@ export default function UserProfilePage() {
       .finally(() => setLoading(false))
   }, [username])
 
-  if (loading) return <div className="loading">Loading...</div>
+  if (loading) return <Spinner />
   if (err) return <div className="error-box">{err}</div>
   if (!profile) return <div className="error-box">使用者不存在</div>
 

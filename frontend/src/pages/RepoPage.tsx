@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { getRepo, listTree, getReadme, listCommits, type Repo, type TreeEntry, type CommitInfo } from '../api'
 import MarkdownView from '../components/MarkdownView'
+import Spinner from '../components/Spinner'
 
 export default function RepoPage() {
   const { id } = useParams<{ id: string }>()
@@ -41,7 +42,7 @@ export default function RepoPage() {
       .finally(() => setLoading(false))
   }, [id])
 
-  if (loading) return <div className="loading">Loading...</div>
+  if (loading) return <Spinner />
   if (err) return <div className="error-box">{err}</div>
   if (!repo) return <div className="error-box">倉庫不存在</div>
 
@@ -102,15 +103,23 @@ export default function RepoPage() {
               <div key={c.sha} className="commit-entry">
                 <div className="sha">{c.sha}</div>
                 <div className="msg">{c.message.split('\n')[0]}</div>
-                <div className="meta">
-                  <span>{c.author}</span>
-                  <span>{c.time}</span>
-                </div>
+        <div className="meta">
+                <span style={{ fontSize: 12, color: '#7c7c7c', padding: '6px 0' }}>
+                  {c.author}
+                </span>
+                <span style={{ fontSize: 12, color: '#7c7c7c', padding: '6px 0' }}>
+                  {c.time}
+                </span>
               </div>
-            ))}
+            </div>
+          ))}
           </div>
         </div>
       )}
+
+      <div className="clone-url-bar" style={{ marginTop: 16, padding: '8px 12px', background: '#1a1a1a', borderRadius: 6, fontSize: 13, color: '#7c7c7c' }}>
+        <strong>Clone:</strong> git clone http://{window.location.host}/git/{username}/{repo.name}
+      </div>
     </div>
   )
 }

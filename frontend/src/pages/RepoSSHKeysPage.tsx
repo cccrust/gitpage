@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { getRepo, listSshKeys, addSshKey, deleteSshKey, type Repo, type SshKey } from '../api'
+import Spinner from '../components/Spinner'
 
 export default function RepoSSHKeysPage() {
   const { id } = useParams<{ id: string }>()
@@ -64,7 +65,7 @@ export default function RepoSSHKeysPage() {
   }
 
   if (!id) return <div className="error-box">缺少倉庫 ID</div>
-  if (loading) return <div className="loading">Loading...</div>
+  if (loading) return <Spinner />
   if (err) return <div className="error-box">{err}</div>
   if (!repo) return <div className="error-box">倉庫不存在</div>
 
