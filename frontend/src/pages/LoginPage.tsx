@@ -28,7 +28,7 @@ export default function LoginPage() {
         <input type="text" value={username} onChange={e => setUsername(e.target.value)} required />
         <label>Password</label>
         <input type="password" value={password} onChange={e => setPassword(e.target.value)} required />
-        {err && <p style={{ color: '#c00', fontSize: 14, marginBottom: 12 }}>{err}</p>}
+        {err && <p className="msg-err">{err}</p>}
         <button className="btn" type="submit">Login</button>
       </form>
       <p className="switch">

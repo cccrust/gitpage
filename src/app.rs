@@ -176,7 +176,7 @@ async fn fallback_handler(
     }
 
     // Serve static files from 'static/' or 'frontend/dist/'
-    for base_dir in &["static", "frontend/dist"] {
+    for base_dir in &["frontend/dist", "static"] {
         let dir = std::path::Path::new(base_dir);
         let file_path = dir.join(path.strip_prefix('/').unwrap_or(""));
         if file_path.exists() && file_path.is_file() {

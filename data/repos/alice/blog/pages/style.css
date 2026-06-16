@@ -1,0 +1,58 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+  background: #f4f4f5;
+  color: #18181b;
+  line-height: 1.7;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 40px 20px 80px;
+}
+
+header { margin-bottom: 48px; }
+header h1 { font-size: 2.2rem; letter-spacing: -0.5px; }
+.tagline { color: #71717a; margin: 4px 0 16px; }
+
+nav { display: flex; gap: 24px; border-bottom: 1px solid #d4d4d8; padding-bottom: 12px; }
+nav a { color: #71717a; text-decoration: none; font-size: 14px; font-weight: 500; }
+nav a:hover, nav a.active { color: #18181b; }
+
+.hero {
+  background: #fff;
+  border: 1px solid #e4e4e7;
+  border-radius: 10px;
+  padding: 28px;
+  margin-bottom: 32px;
+}
+.hero h2 { font-size: 1.4rem; margin-bottom: 8px; }
+.hero p { color: #52525b; }
+
+.posts { display: flex; flex-direction: column; gap: 16px; }
+
+.post-card {
+  background: #fff;
+  border: 1px solid #e4e4e7;
+  border-radius: 10px;
+  padding: 20px 24px;
+  transition: box-shadow .2s, border-color .2s;
+  cursor: pointer;
+}
+.post-card:hover {
+  border-color: #a1a1aa;
+  box-shadow: 0 2px 8px rgba(0,0,0,.06);
+}
+.post-card h3 { font-size: 1.1rem; margin-bottom: 4px; }
+.post-card h3 a { color: #18181b; text-decoration: none; }
+.post-card h3 a:hover { color: #2563eb; }
+.meta { font-size: 13px; color: #a1a1aa; margin-bottom: 8px; }
+.post-card p { font-size: 14px; color: #52525b; }
+
+footer {
+  margin-top: 64px;
+  padding-top: 24px;
+  border-top: 1px solid #d4d4d8;
+  text-align: center;
+  color: #a1a1aa;
+  font-size: 13px;
+}

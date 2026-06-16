@@ -30,7 +30,7 @@ export default function NewRepoPage() {
           <input type="checkbox" checked={priv} onChange={e => setPriv(e.target.checked)} />
           Private repository
         </label>
-        {err && <p style={{ color: '#c00', fontSize: 14, marginBottom: 12 }}>{err}</p>}
+        {err && <p className="msg-err">{err}</p>}
         <button className="btn" type="submit">Create</button>
       </form>
     </div>

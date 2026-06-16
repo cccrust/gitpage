@@ -4,7 +4,10 @@ import { getRepo, getBlob, listTree, type Repo, type TreeEntry } from '../api'
 import MarkdownView from '../components/MarkdownView'
 
 export default function FileViewPage() {
-  const { id, rest } = useParams<{ id: string; rest: string }>()
+  const params = useParams()
+  const id = params.id
+  const rest = params['*'] || ''
+
   const [repo, setRepo] = useState<Repo | null>(null)
   const [content, setContent] = useState('')
   const [rendered, setRendered] = useState<string | null>(null)
@@ -19,17 +22,21 @@ export default function FileViewPage() {
     if (!id || !rest) return
 
     const parts = rest.split('/')
-    const b = parts[0] || 'main'
-    const p = parts.slice(1).join('/')
+    const b = parts[1] || 'main'
+    const p = parts.slice(2).join('/')
     setBranch(b)
     setPath(p)
 
     const numId = parseInt(id)
     if (isNaN(numId)) { setErr('Invalid ID'); setLoading(false); return }
 
+    // Clear stale state before async ops
+    setIsDir(false)
+    setEntries([])
+    setContent('')
+    setRendered(null)
+    setErr('')
     setLoading(true)
-    const uname = `user_${numId}`
-    const rname = ''
 
     getRepo(numId)
       .then(async r => {

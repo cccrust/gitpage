@@ -88,35 +88,26 @@ export default function RepoSettingsPage() {
           Private repository
         </label>
 
-        {msg && <p style={{ color: '#090', fontSize: 13, marginBottom: 8 }}>{msg}</p>}
-        {err && <p style={{ color: '#c00', fontSize: 13, marginBottom: 8 }}>{err}</p>}
+        {msg && <p className="msg-ok">{msg}</p>}
+        {err && <p className="msg-err">{err}</p>}
 
         <button className="btn" type="submit" disabled={saving}>
           {saving ? 'Saving...' : 'Save'}
         </button>
       </form>
 
-      <hr style={{ margin: '24px 0', border: 'none', borderTop: '1px solid #333' }} />
-
-      <h3 style={{ fontSize: 14, fontWeight: 600, color: '#c00', marginBottom: 8 }}>Danger Zone</h3>
-      <p style={{ fontSize: 13, color: '#7c7c7c', marginBottom: 8 }}>
-        Type <strong>{repo.name}</strong> to confirm deletion.
-      </p>
-      <input
-        type="text"
-        value={confirmDelete}
-        onChange={e => setConfirmDelete(e.target.value)}
-        placeholder={repo.name}
-        style={{ marginBottom: 8 }}
-      />
-      <button
-        className="btn-sm"
-        style={{ background: '#c00', color: '#fff' }}
-        onClick={handleDelete}
-        disabled={deleting || confirmDelete !== repo.name}
-      >
-        {deleting ? 'Deleting...' : 'Delete this repository'}
-      </button>
+      <div className="danger-zone">
+        <h3>Danger Zone</h3>
+        <p>Type <strong>{repo.name}</strong> to confirm deletion.</p>
+        <input type="text" value={confirmDelete} onChange={e => setConfirmDelete(e.target.value)} placeholder={repo.name} />
+        <button
+          className="btn-sm danger"
+          onClick={handleDelete}
+          disabled={deleting || confirmDelete !== repo.name}
+        >
+          {deleting ? 'Deleting...' : 'Delete this repository'}
+        </button>
+      </div>
     </div>
   )
 }

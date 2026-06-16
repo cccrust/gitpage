@@ -11,16 +11,113 @@ body {
 a { color: inherit; text-decoration: none; }
 a:hover { text-decoration: underline; }
 ul, ol { list-style: none; }
-input, button, textarea { font: inherit; }
-button { cursor: pointer; }
 :root {
   --max-w: 640px;
   --border: 1px solid #e5e5e5;
+  --border-focus: #000;
   --muted: #7c7c7c;
   --accent: #000;
   --bg-hover: #f5f5f5;
-  --radius: 4px;
+  --radius: 6px;
+  --radius-sm: 4px;
+  --input-bg: #fafafa;
+  --btn-radius: 8px;
 }
+
+/* ── Global Form Elements ── */
+input, button, textarea, select { font: inherit; }
+button { cursor: pointer; }
+
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="url"],
+input[type="search"],
+textarea,
+select {
+  width: 100%;
+  padding: 10px 12px;
+  border: var(--border);
+  border-radius: var(--radius);
+  font-size: 15px;
+  outline: none;
+  background: var(--input-bg);
+  color: #111;
+  transition: border-color .15s, box-shadow .15s, background .15s;
+}
+input:focus, textarea:focus, select:focus {
+  border-color: var(--border-focus);
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(0,0,0,.08);
+}
+input::placeholder, textarea::placeholder { color: #aaa; }
+textarea { resize: vertical; min-height: 80px; }
+
+label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: #555;
+  margin-bottom: 4px;
+  letter-spacing: .01em;
+}
+label.checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 400;
+  color: #111;
+  cursor: pointer;
+  padding: 6px 0;
+}
+label.checkbox input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: #000;
+  cursor: pointer;
+}
+
+/* ── Buttons ── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 20px;
+  background: #000;
+  color: #fff;
+  border: none;
+  border-radius: var(--btn-radius);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .15s, transform .1s, box-shadow .15s;
+  line-height: 1.3;
+}
+.btn:hover { background: #222; }
+.btn:active { transform: scale(.97); }
+.btn:disabled { opacity: .4; cursor: not-allowed; transform: none; }
+
+.btn-sm {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 14px;
+  border: var(--border);
+  border-radius: var(--radius);
+  font-size: 13px;
+  font-weight: 500;
+  background: #fff;
+  color: #111;
+  cursor: pointer;
+  transition: background .15s, border-color .15s;
+  line-height: 1.3;
+}
+.btn-sm:hover { background: var(--bg-hover); border-color: #ccc; text-decoration: none; }
+.btn-sm:active { background: #eee; }
+.btn-sm.danger { color: #c00; border-color: #fcc; }
+.btn-sm.danger:hover { background: #fff0f0; border-color: #c00; }
 
 /* ── Layout ── */
 .container { max-width: var(--max-w); margin: 0 auto; padding: 0 16px; }
@@ -57,29 +154,14 @@ button { cursor: pointer; }
 /* ── Auth forms ── */
 .auth-page { padding: 60px 16px; max-width: 360px; margin: 0 auto; }
 .auth-page h2 { font-size: 22px; font-weight: 600; margin-bottom: 24px; }
-.auth-page label { display: block; font-size: 14px; font-weight: 500; margin-bottom: 6px; }
-.auth-page input[type="text"],
-.auth-page input[type="email"],
-.auth-page input[type="password"] {
-  width: 100%; padding: 12px; border: var(--border); border-radius: var(--radius);
-  font-size: 15px; margin-bottom: 16px; outline: none;
-}
-.auth-page input:focus { border-color: #000; }
-.auth-page .btn {
-  width: 100%; padding: 12px; background: #000; color: #fff;
-  border: none; border-radius: var(--radius); font-size: 15px; font-weight: 600;
-}
-.auth-page .btn:hover { background: #222; }
+.auth-page form { display: flex; flex-direction: column; gap: 4px; }
+.auth-page label { margin-top: 8px; }
 .auth-page .switch { font-size: 14px; color: var(--muted); margin-top: 16px; text-align: center; }
 
 /* ── Dashboard ── */
 .dashboard { padding: 24px 0 80px; }
 .dashboard .head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
 .dashboard .head h1 { font-size: 20px; font-weight: 600; }
-.dashboard .head .btn-sm {
-  padding: 8px 16px; background: #000; color: #fff; border: none;
-  border-radius: var(--radius); font-size: 13px; font-weight: 600;
-}
 .repo-card {
   display: block; padding: 16px; border-bottom: var(--border);
   transition: background .1s;
@@ -96,13 +178,7 @@ button { cursor: pointer; }
 .repo-header .breadcrumb a:hover { text-decoration: underline; }
 .repo-header h1 { font-size: 22px; font-weight: 600; }
 .repo-header .desc { font-size: 14px; color: var(--muted); margin-top: 4px; }
-.repo-header .actions { display: flex; gap: 8px; margin-top: 12px; }
-.repo-header .btn-sm {
-  padding: 6px 14px; border: var(--border); border-radius: var(--radius);
-  font-size: 13px; background: #fff; color: #111;
-}
-.repo-header .btn-sm:hover { background: var(--bg-hover); }
-
+.repo-header .actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
 .branch-bar {
   font-size: 13px; color: var(--muted); padding: 8px 0; border-bottom: var(--border);
   margin-bottom: 0;
@@ -125,6 +201,42 @@ button { cursor: pointer; }
   font-size: 12px; background: #f5f5f5; padding: 10px; border-radius: var(--radius);
   font-family: "SF Mono", "Fira Code", monospace; word-break: break-all;
 }
+
+/* ── Settings / New repo / Pages ── */
+.settings-page, .new-repo-page, .profile-page {
+  padding: 24px 0 80px;
+  max-width: 480px;
+  margin: 0 auto;
+}
+.settings-page h2, .new-repo-page h2, .profile-page h2 {
+  font-size: 20px; font-weight: 600; margin-bottom: 20px;
+}
+.settings-page .breadcrumb, .new-repo-page .breadcrumb {
+  font-size: 13px; color: var(--muted); margin-bottom: 12px;
+}
+.settings-page .breadcrumb a:hover, .new-repo-page .breadcrumb a:hover { text-decoration: underline; }
+.settings-page form, .new-repo-page form {
+  display: flex; flex-direction: column; gap: 6px;
+}
+.settings-page hr { border: none; border-top: 1px solid #eee; margin: 24px 0; }
+.settings-page .danger-zone {
+  background: #fff8f8;
+  border: 1px solid #fcc;
+  border-radius: var(--radius);
+  padding: 16px;
+}
+.settings-page .danger-zone h3 { font-size: 14px; font-weight: 600; color: #c00; margin-bottom: 8px; }
+.settings-page .danger-zone p { font-size: 13px; color: #666; margin-bottom: 8px; }
+
+/* ── Profile ── */
+.profile-page .profile-header { text-align: center; padding: 32px 0 16px; }
+.profile-page .avatar {
+  width: 64px; height: 64px; border-radius: 50%; background: #000;
+  color: #fff; display: flex; align-items: center; justify-content: center;
+  font-size: 24px; font-weight: 700; margin: 0 auto 12px;
+}
+.profile-page .profile-header h2 { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
+.profile-page .bio { font-size: 14px; color: var(--muted); margin-bottom: 4px; }
 
 /* ── Markdown body ── */
 .markdown-body { padding: 16px 0; font-size: 15px; line-height: 1.7; }
@@ -158,30 +270,21 @@ button { cursor: pointer; }
 }
 
 /* ── Commits ── */
-.commit-list { }
 .commit-entry { padding: 12px 0; border-bottom: var(--border); }
 .commit-entry .sha { font-size: 12px; color: var(--muted); font-family: monospace; }
 .commit-entry .msg { font-size: 14px; font-weight: 500; margin: 2px 0; }
 .commit-entry .meta { font-size: 12px; color: var(--muted); display: flex; gap: 12px; }
 
-/* ── New repo ── */
-.new-repo-page { padding: 40px 16px; max-width: 400px; margin: 0 auto; }
-.new-repo-page h2 { font-size: 20px; font-weight: 600; margin-bottom: 20px; }
-.new-repo-page input[type="text"] {
-  width: 100%; padding: 12px; border: var(--border); border-radius: var(--radius);
-  font-size: 15px; margin-bottom: 12px; outline: none;
-}
-.new-repo-page input:focus { border-color: #000; }
-.new-repo-page label.checkbox { display: flex; align-items: center; gap: 8px; font-size: 14px; margin-bottom: 16px; }
-.new-repo-page .btn {
-  width: 100%; padding: 12px; background: #000; color: #fff;
-  border: none; border-radius: var(--radius); font-size: 15px; font-weight: 600;
-}
-.new-repo-page .btn:hover { background: #222; }
+/* ── Hint / Section ── */
+.hint { font-size: 13px; color: var(--muted); margin-bottom: 12px; }
+.section { margin-top: 24px; }
+.section h3 { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
 
-/* ── Error / Loading ── */
+/* ── Error / Loading / Message ── */
 .error-box { padding: 20px; text-align: center; color: #c00; font-size: 14px; }
 .loading { padding: 40px; text-align: center; color: var(--muted); font-size: 14px; }
+.msg-ok { font-size: 13px; color: #090; margin-bottom: 8px; }
+.msg-err { font-size: 13px; color: #c00; margin-bottom: 8px; }
 
 /* ── Responsive ── */
 @media (min-width: 768px) {
@@ -191,7 +294,3 @@ button { cursor: pointer; }
 @media (max-width: 767px) {
   .main-content { padding-bottom: 60px; }
 }
-
-/* ── Repo header with clone URL ── */
-.clone-info { font-size: 12px; color: var(--muted); padding: 8px 0; border-top: var(--border); margin-top: 8px; }
-.clone-info code { background: #f0f0f0; padding: 2px 6px; border-radius: 3px; font-family: monospace; }

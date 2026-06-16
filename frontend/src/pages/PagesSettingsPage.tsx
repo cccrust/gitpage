@@ -90,9 +90,7 @@ export default function PagesSettingsPage() {
         <Link to="/">~</Link> / <Link to={`/repo/${repo.id}`}>{repo.name}</Link> / Pages
       </div>
       <h2>Pages</h2>
-      <p style={{ fontSize: 13, color: '#7c7c7c', marginBottom: 16 }}>
-        Publish static files from your repository as a website.
-      </p>
+      <p className="hint">Publish static files from your repository as a website.</p>
 
       <form onSubmit={submit}>
         <label>Branch</label>
@@ -109,8 +107,8 @@ export default function PagesSettingsPage() {
           Enabled
         </label>
 
-        {msg && <p style={{ color: '#090', fontSize: 13, marginBottom: 8 }}>{msg}</p>}
-        {err && <p style={{ color: '#c00', fontSize: 13, marginBottom: 8 }}>{err}</p>}
+        {msg && <p className="msg-ok">{msg}</p>}
+        {err && <p className="msg-err">{err}</p>}
 
         <button className="btn" type="submit" disabled={saving}>
           {saving ? 'Saving...' : 'Save'}
@@ -118,9 +116,9 @@ export default function PagesSettingsPage() {
       </form>
 
       {enabled && (
-        <div style={{ marginTop: 24 }}>
-          <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>Deploy</h3>
-          <p style={{ fontSize: 13, color: '#7c7c7c', marginBottom: 8 }}>
+        <div className="section">
+          <h3>Deploy</h3>
+          <p className="hint">
             Site URL: <a href={`/pages/${username}/${repo.name}/`} target="_blank" rel="noopener" style={{ textDecoration: 'underline' }}>
               /pages/{username}/{repo.name}/
             </a>
