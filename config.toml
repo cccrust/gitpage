@@ -1,0 +1,13 @@
+[server]
+host = "0.0.0.0"
+port = 8080
+
+[database]
+path = "data/gitpage.db"
+
+[storage]
+base_path = "data/repos"
+
+[jwt]
+secret = "gitpage-dev-secret-change-in-production"
+expires_in_hours = 24
