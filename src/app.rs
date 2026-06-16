@@ -7,12 +7,14 @@ use axum::{
     routing::{delete, get, post, put},
     Router,
 };
+
 use std::sync::Arc;
 use tower_http::cors::CorsLayer;
 
 use crate::auth;
 use crate::config::Config;
 use crate::db::Database;
+use crate::deploy::AppProcessManager;
 use crate::handlers;
 
 const JWT_SECRET: &str = "gitpage-dev-secret-change-in-production";
@@ -23,6 +25,7 @@ pub struct AppState {
     pub config: Arc<Config>,
     pub jwt_secret: String,
     pub jwt_expires_hours: u64,
+    pub app_manager: AppProcessManager,
 }
 
 async fn auth_middleware(
@@ -98,6 +101,10 @@ pub fn create_app(state: AppState) -> Router {
         .route("/api/pages/:repo_id", get(handlers::pages::get_pages_config))
         .route("/api/pages/:repo_id", put(handlers::pages::update_pages_config))
         .route("/api/pages/:repo_id/deploy", post(handlers::pages::deploy_pages_handler))
+        .route("/api/apps/:repo_id", get(handlers::apps::get_apps_config))
+        .route("/api/apps/:repo_id", put(handlers::apps::update_apps_config))
+        .route("/api/apps/:repo_id", delete(handlers::apps::delete_apps_handler))
+        .route("/api/apps/:repo_id/deploy", post(handlers::apps::deploy_apps_handler))
         .fallback(fallback_handler)
         .layer(middleware::from_fn(auth_middleware))
         .layer(CorsLayer::permissive())
@@ -149,9 +156,14 @@ async fn fallback_handler(
                 repo_name,
             );
 
-            // Auto-deploy pages on successful push
+            // Auto-deploy pages and apps on successful push
             if is_push && resp.status().is_success() {
                 tokio::spawn(auto_deploy_pages(
+                    state.clone(),
+                    username.to_string(),
+                    repo_name.to_string(),
+                ));
+                tokio::spawn(auto_deploy_app(
                     state.clone(),
                     username.to_string(),
                     repo_name.to_string(),
@@ -172,6 +184,67 @@ async fn fallback_handler(
 
             let pages_dir = format!("{}/{}/{}/pages", state.config.storage.base_path, username, repo_name);
             return handlers::git_smart::serve_pages(&pages_dir, subpath).await;
+        }
+    }
+
+    // App proxy: /app/{username}/{repo_name}/{*path}
+    if let Some(rest) = path.strip_prefix("/app/") {
+        let parts: Vec<&str> = rest.splitn(3, '/').collect();
+        if parts.len() >= 2 {
+            let username = parts[0];
+            let repo_name = parts[1];
+            let subpath = parts.get(2).copied().unwrap_or("");
+
+            let user = match state.db.find_user_by_username(username).await {
+                Ok(Some(u)) => u,
+                _ => return (StatusCode::NOT_FOUND, "User not found").into_response(),
+            };
+            let repo = match state.db.find_repo_by_name(user.id, repo_name).await {
+                Ok(Some(r)) => r,
+                _ => return (StatusCode::NOT_FOUND, "Repository not found").into_response(),
+            };
+
+            if let Some(proc) = state.app_manager.get(repo.id).await {
+                if proc.status == crate::deploy::AppStatus::Running {
+                    let url = format!("http://127.0.0.1:{}/{}", proc.port, subpath);
+
+                    let client = reqwest::Client::new();
+                    let body_bytes = axum::body::to_bytes(req.into_body(), 10 * 1024 * 1024).await.unwrap_or_default();
+
+                    let reqwest_req = client
+                        .request(
+                            reqwest::Method::from_bytes(method.as_str().as_bytes()).unwrap_or(reqwest::Method::GET),
+                            &url,
+                        )
+                        .body(body_bytes.to_vec())
+                        .build()
+                        .unwrap();
+
+                    let reqwest_resp = match client.execute(reqwest_req).await {
+                        Ok(r) => r,
+                        Err(e) => return (StatusCode::BAD_GATEWAY, format!("Proxy error: {}", e)).into_response(),
+                    };
+
+                    let status = reqwest_resp.status();
+                    let content_type = reqwest_resp
+                        .headers()
+                        .get(reqwest::header::CONTENT_TYPE)
+                        .and_then(|v| v.to_str().ok())
+                        .unwrap_or("text/html; charset=utf-8")
+                        .to_string();
+                    let resp_body = match reqwest_resp.bytes().await {
+                        Ok(b) => b,
+                        Err(_) => return (StatusCode::BAD_GATEWAY, "Failed to read upstream body").into_response(),
+                    };
+
+                    let mut resp = Response::builder().status(status);
+                    resp = resp.header(header::CONTENT_TYPE, content_type);
+                    return resp
+                        .body(Body::from(resp_body.to_vec()))
+                        .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response());
+                }
+            }
+            return (StatusCode::BAD_GATEWAY, "App is not running").into_response();
         }
     }
 
@@ -233,4 +306,36 @@ async fn auto_deploy_pages(state: AppState, username: String, repo_name: String)
 
     let _ = crate::git::deploy_pages(&repo_path, &pages_dir, &cfg.branch, &cfg.source_dir);
     tracing::info!("Pages deployed for {}/{}", username, repo_name);
+}
+
+async fn auto_deploy_app(state: AppState, username: String, repo_name: String) {
+    let user = match state.db.find_user_by_username(&username).await {
+        Ok(Some(u)) => u,
+        _ => return,
+    };
+    let repo = match state.db.find_repo_by_name(user.id, &repo_name).await {
+        Ok(Some(r)) => r,
+        _ => return,
+    };
+
+    let cfg = match state.db.get_apps_config(repo.id).await {
+        Ok(Some(c)) if c.enabled => c,
+        _ => return,
+    };
+
+    let repo_path = state.config.repo_path(&username, &repo_name);
+    let workspace = state.config.app_workspace_dir(&username, &repo_name);
+
+    match crate::deploy::deploy_app(
+        &state.app_manager,
+        &repo_path,
+        &workspace,
+        &cfg,
+        &username,
+        &repo_name,
+        repo.id,
+    ).await {
+        Ok(port) => tracing::info!("App deployed for {}/{} on port {}", username, repo_name, port),
+        Err(e) => tracing::error!("App deploy failed for {}/{}: {}", username, repo_name, e),
+    }
 }

@@ -7,6 +7,8 @@ pub struct Config {
     pub database: DatabaseConfig,
     pub storage: StorageConfig,
     pub jwt: JwtConfig,
+    #[serde(default)]
+    pub apps: AppsConfig,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -31,6 +33,18 @@ pub struct JwtConfig {
     pub expires_in_hours: u64,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct AppsConfig {
+    pub port_range_start: u16,
+    pub port_range_end: u16,
+}
+
+impl Default for AppsConfig {
+    fn default() -> Self {
+        AppsConfig { port_range_start: 4000, port_range_end: 65535 }
+    }
+}
+
 impl Config {
     pub fn from_file(path: &str) -> Self {
         let content = fs::read_to_string(path).expect("Failed to read config file");
@@ -47,5 +61,9 @@ impl Config {
 
     pub fn pages_dir(&self, username: &str, repo: &str) -> String {
         format!("{}/{}/{}/pages", self.storage.base_path, username, repo)
+    }
+
+    pub fn app_workspace_dir(&self, username: &str, repo: &str) -> String {
+        format!("data/apps/{}/{}", username, repo)
     }
 }

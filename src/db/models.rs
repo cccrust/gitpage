@@ -45,6 +45,18 @@ pub struct Repository {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AppsConfig {
+    pub id: i64,
+    pub repo_id: i64,
+    pub branch: String,
+    pub source_dir: String,
+    pub build_command: String,
+    pub start_command: String,
+    pub env_vars: String,
+    pub enabled: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PagesConfig {
     pub id: i64,
     pub repo_id: i64,

@@ -170,3 +170,42 @@ export function updatePagesConfig(repoId: number, data: { branch?: string; sourc
 export function deployPages(repoId: number) {
   return request<{ success: boolean; pages_dir: string }>('POST', `/api/pages/${repoId}/deploy`)
 }
+
+// ── Apps ──
+
+export interface AppsConfig {
+  id: number
+  repo_id: number
+  branch: string
+  source_dir: string
+  build_command: string
+  start_command: string
+  env_vars: string
+  enabled: boolean
+}
+
+export interface AppStatusResponse {
+  apps_config: AppsConfig | null
+  status: string | null
+  port: number | null
+  url: string | null
+}
+
+export function getAppsConfig(repoId: number) {
+  return request<AppStatusResponse>('GET', `/api/apps/${repoId}`)
+}
+
+export function updateAppsConfig(repoId: number, data: {
+  branch?: string; source_dir?: string; build_command?: string;
+  start_command?: string; env_vars?: string; enabled?: boolean
+}) {
+  return request<{ success: boolean; port?: number; deploy_error?: string }>('PUT', `/api/apps/${repoId}`, data)
+}
+
+export function deployApps(repoId: number) {
+  return request<{ success: boolean; port: number; url: string }>('POST', `/api/apps/${repoId}/deploy`)
+}
+
+export function deleteAppsConfig(repoId: number) {
+  return request<{ success: boolean }>('DELETE', `/api/apps/${repoId}`)
+}

@@ -2,6 +2,7 @@ mod app;
 mod auth;
 mod config;
 mod db;
+mod deploy;
 mod git;
 mod handlers;
 mod utils;
@@ -19,6 +20,7 @@ async fn main() {
     let cfg = Arc::new(cfg);
 
     std::fs::create_dir_all(&cfg.storage.base_path).expect("Failed to create storage directory");
+    std::fs::create_dir_all("data/apps").expect("Failed to create apps directory");
     std::fs::create_dir_all("static").expect("Failed to create static directory");
 
     let db = db::Database::new(&cfg.database.path).expect("Failed to open database");
@@ -27,11 +29,17 @@ async fn main() {
     let jwt_secret = cfg.jwt.secret.clone();
     let jwt_expires_hours = cfg.jwt.expires_in_hours;
 
+    let app_manager = deploy::AppProcessManager::new(
+        cfg.apps.port_range_start,
+        cfg.apps.port_range_end,
+    );
+
     let state = app::AppState {
         db,
         config: cfg.clone(),
         jwt_secret,
         jwt_expires_hours,
+        app_manager,
     };
 
     let app = app::create_app(state);

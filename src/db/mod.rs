@@ -3,7 +3,7 @@ pub mod models;
 use rusqlite::{Connection, params};
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use models::{User, Repository, PagesConfig};
+use models::{User, Repository, PagesConfig, AppsConfig};
 
 #[derive(Clone)]
 pub struct Database {
@@ -51,6 +51,17 @@ impl Database {
                 source_dir  TEXT DEFAULT '/',
                 custom_domain TEXT DEFAULT '',
                 enabled     INTEGER DEFAULT 0
+            );
+
+            CREATE TABLE IF NOT EXISTS apps_config (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                repo_id         INTEGER NOT NULL UNIQUE REFERENCES repositories(id),
+                branch          TEXT DEFAULT 'main',
+                source_dir      TEXT DEFAULT '/',
+                build_command   TEXT DEFAULT '',
+                start_command   TEXT DEFAULT '',
+                env_vars        TEXT DEFAULT '{}',
+                enabled         INTEGER DEFAULT 0
             );"
         )?;
         Ok(())
@@ -235,6 +246,7 @@ impl Database {
     pub async fn delete_repo(&self, id: i64) -> Result<bool, rusqlite::Error> {
         let conn = self.conn.lock().await;
         conn.execute("DELETE FROM pages_config WHERE repo_id = ?1", params![id])?;
+        conn.execute("DELETE FROM apps_config WHERE repo_id = ?1", params![id])?;
         let affected = conn.execute("DELETE FROM repositories WHERE id = ?1", params![id])?;
         Ok(affected > 0)
     }
@@ -294,6 +306,71 @@ impl Database {
             params![repo_id, branch, source_dir, custom_domain, enabled as i32],
         )?;
         Ok(())
+    }
+
+    // ── Apps operations ──
+
+    pub async fn upsert_apps_config(&self, repo_id: i64, branch: &str, source_dir: &str, build_command: &str, start_command: &str, env_vars: &str, enabled: bool) -> Result<(), rusqlite::Error> {
+        let conn = self.conn.lock().await;
+        conn.execute(
+            "INSERT INTO apps_config (repo_id, branch, source_dir, build_command, start_command, env_vars, enabled)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+             ON CONFLICT(repo_id) DO UPDATE SET
+               branch=excluded.branch, source_dir=excluded.source_dir,
+               build_command=excluded.build_command, start_command=excluded.start_command,
+               env_vars=excluded.env_vars, enabled=excluded.enabled",
+            params![repo_id, branch, source_dir, build_command, start_command, env_vars, enabled as i32],
+        )?;
+        Ok(())
+    }
+
+    pub async fn get_apps_config(&self, repo_id: i64) -> Result<Option<AppsConfig>, rusqlite::Error> {
+        let conn = self.conn.lock().await;
+        let mut stmt = conn.prepare(
+            "SELECT id, repo_id, branch, source_dir, build_command, start_command, env_vars, enabled FROM apps_config WHERE repo_id = ?1"
+        )?;
+        let mut rows = stmt.query_map(params![repo_id], |row| {
+            Ok(AppsConfig {
+                id: row.get(0)?,
+                repo_id: row.get(1)?,
+                branch: row.get(2)?,
+                source_dir: row.get(3)?,
+                build_command: row.get(4)?,
+                start_command: row.get(5)?,
+                env_vars: row.get(6)?,
+                enabled: row.get::<_, i32>(7)? != 0,
+            })
+        })?;
+        match rows.next() {
+            Some(Ok(cfg)) => Ok(Some(cfg)),
+            _ => Ok(None),
+        }
+    }
+
+    pub async fn delete_apps_config(&self, repo_id: i64) -> Result<(), rusqlite::Error> {
+        let conn = self.conn.lock().await;
+        conn.execute("DELETE FROM apps_config WHERE repo_id = ?1", params![repo_id])?;
+        Ok(())
+    }
+
+    pub async fn get_enabled_apps(&self) -> Result<Vec<AppsConfig>, rusqlite::Error> {
+        let conn = self.conn.lock().await;
+        let mut stmt = conn.prepare(
+            "SELECT id, repo_id, branch, source_dir, build_command, start_command, env_vars, enabled FROM apps_config WHERE enabled = 1"
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok(AppsConfig {
+                id: row.get(0)?,
+                repo_id: row.get(1)?,
+                branch: row.get(2)?,
+                source_dir: row.get(3)?,
+                build_command: row.get(4)?,
+                start_command: row.get(5)?,
+                env_vars: row.get(6)?,
+                enabled: row.get::<_, i32>(7)? != 0,
+            })
+        })?;
+        rows.collect()
     }
 
     pub async fn get_pages_config(&self, repo_id: i64) -> Result<Option<PagesConfig>, rusqlite::Error> {

@@ -58,6 +58,7 @@ export default function RepoPage() {
         <div className="actions">
           <Link to={`/repo/${repo.id}/commits/${branch}`} className="btn-sm">Commits</Link>
           <Link to={`/repo/${repo.id}/pages`} className="btn-sm">Pages</Link>
+          <Link to={`/repo/${repo.id}/app`} className="btn-sm">App</Link>
           <Link to={`/repo/${repo.id}/settings`} className="btn-sm">Settings</Link>
           <span style={{ fontSize: 12, color: '#7c7c7c', padding: '6px 0' }}>
             {repo.is_private ? 'Private' : 'Public'}
