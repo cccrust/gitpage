@@ -66,4 +66,12 @@ impl Config {
     pub fn app_workspace_dir(&self, username: &str, repo: &str) -> String {
         format!("data/apps/{}/{}", username, repo)
     }
+
+    pub fn working_tree_path(&self, username: &str, repo: &str) -> String {
+        format!("{}/{}/{}", self.storage.base_path, username, repo)
+    }
+
+    pub fn staging_path(&self, username: &str, repo: &str) -> String {
+        format!("data/staging/{}/{}", username, repo)
+    }
 }

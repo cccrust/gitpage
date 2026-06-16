@@ -105,6 +105,15 @@ pub fn create_app(state: AppState) -> Router {
         .route("/api/apps/:repo_id", put(handlers::apps::update_apps_config))
         .route("/api/apps/:repo_id", delete(handlers::apps::delete_apps_handler))
         .route("/api/apps/:repo_id/deploy", post(handlers::apps::deploy_apps_handler))
+        .route("/api/repos/:repo_id/tree", get(handlers::files::tree))
+        .route("/api/repos/:repo_id/raw", get(handlers::files::raw))
+        .route("/api/repos/:repo_id/files", put(handlers::files::write_file))
+        .route("/api/repos/:repo_id/files", delete(handlers::files::delete_file))
+        .route("/api/repos/:repo_id/mkdir", post(handlers::files::mkdir))
+        .route("/api/repos/:repo_id/move", post(handlers::files::move_file))
+        .route("/api/repos/:repo_id/status", get(handlers::files::status))
+        .route("/api/repos/:repo_id/commit", post(handlers::files::commit))
+
         .fallback(fallback_handler)
         .layer(middleware::from_fn(auth_middleware))
         .layer(CorsLayer::permissive())
@@ -285,7 +294,7 @@ async fn fallback_handler(
     (StatusCode::NOT_FOUND, "Not found").into_response()
 }
 
-async fn auto_deploy_pages(state: AppState, username: String, repo_name: String) {
+pub(crate) async fn auto_deploy_pages(state: AppState, username: String, repo_name: String) {
     let repo_path = state.config.repo_path(&username, &repo_name);
     let pages_dir = state.config.pages_dir(&username, &repo_name);
 
@@ -308,7 +317,7 @@ async fn auto_deploy_pages(state: AppState, username: String, repo_name: String)
     tracing::info!("Pages deployed for {}/{}", username, repo_name);
 }
 
-async fn auto_deploy_app(state: AppState, username: String, repo_name: String) {
+pub(crate) async fn auto_deploy_app(state: AppState, username: String, repo_name: String) {
     let user = match state.db.find_user_by_username(&username).await {
         Ok(Some(u)) => u,
         _ => return,

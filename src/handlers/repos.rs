@@ -55,6 +55,10 @@ pub async fn create_repo(
     let repo_path = state.config.repo_path(&user.username, &req.name);
     git::init_bare_repo(&repo_path)?;
 
+    // Create staging directory
+    let staging_path = state.config.staging_path(&user.username, &req.name);
+    std::fs::create_dir_all(&staging_path)?;
+
     Ok((StatusCode::CREATED, Json(json!({ "repo": repo }))))
 }
 
@@ -89,6 +93,11 @@ pub async fn delete_repo(
     let repo_path = state.config.repo_path(&user.username, &repo.name);
     if std::path::Path::new(&repo_path).exists() {
         std::fs::remove_dir_all(&repo_path)?;
+    }
+
+    let staging_path = state.config.staging_path(&user.username, &repo.name);
+    if std::path::Path::new(&staging_path).exists() {
+        std::fs::remove_dir_all(&staging_path)?;
     }
 
     state.db.delete_repo(repo_id).await?;

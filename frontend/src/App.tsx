@@ -6,6 +6,8 @@ import Dashboard from './pages/Dashboard'
 import NewRepoPage from './pages/NewRepoPage'
 import RepoPage from './pages/RepoPage'
 import FileViewPage from './pages/FileViewPage'
+import FileExplorerPage from './pages/FileExplorerPage'
+import FileEditorPage from './pages/FileEditorPage'
 import CommitsPage from './pages/CommitsPage'
 import PagesSettingsPage from './pages/PagesSettingsPage'
 import AppSettingsPage from './pages/AppSettingsPage'
@@ -22,6 +24,9 @@ export default function App() {
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/new" element={<NewRepoPage />} />
           <Route path="/repo/:id" element={<RepoPage />} />
+          <Route path="/repo/:id/files/edit" element={<FileEditorPage />} />
+          <Route path="/repo/:id/files/new" element={<FileEditorPage />} />
+          <Route path="/repo/:id/files" element={<FileExplorerPage />} />
           <Route path="/repo/:id/*" element={<FileViewPage />} />
           <Route path="/repo/:id/commits/:branch" element={<CommitsPage />} />
           <Route path="/repo/:id/pages" element={<PagesSettingsPage />} />

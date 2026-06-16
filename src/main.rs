@@ -21,6 +21,7 @@ async fn main() {
 
     std::fs::create_dir_all(&cfg.storage.base_path).expect("Failed to create storage directory");
     std::fs::create_dir_all("data/apps").expect("Failed to create apps directory");
+    std::fs::create_dir_all("data/staging").expect("Failed to create staging directory");
     std::fs::create_dir_all("static").expect("Failed to create static directory");
 
     let db = db::Database::new(&cfg.database.path).expect("Failed to open database");

@@ -191,6 +191,87 @@ export interface AppStatusResponse {
   url: string | null
 }
 
+// ── Working Tree (File Manager) ──
+
+export interface FileEntry {
+  name: string
+  is_dir: boolean
+  size: number | null
+  updated_at: string
+}
+
+export interface WorkingTreeChange {
+  path: string
+  change_type: string
+}
+
+export function listWorkingTree(repoId: number, path?: string) {
+  const params = new URLSearchParams()
+  if (path) params.set('path', path)
+  return request<{ entries: FileEntry[]; path: string }>('GET', `/api/repos/${repoId}/tree?${params}`)
+}
+
+export async function getRawFile(repoId: number, path: string): Promise<Response> {
+  const headers: Record<string, string> = {}
+  const token = getToken()
+  if (token) headers['Authorization'] = `Bearer ${token}`
+  return fetch(`${BASE}/api/repos/${repoId}/raw?path=${encodeURIComponent(path)}`, { headers })
+}
+
+export async function writeFile(repoId: number, path: string, content: string | Blob) {
+  const headers: Record<string, string> = {}
+  const token = getToken()
+  if (token) headers['Authorization'] = `Bearer ${token}`
+  const body = typeof content === 'string' ? content : content
+  const res = await fetch(`${BASE}/api/repos/${repoId}/files?path=${encodeURIComponent(path)}`, {
+    method: 'PUT',
+    headers,
+    body,
+  })
+  if (!res.ok) {
+    const err = await res.text()
+    throw new Error(err || `HTTP ${res.status}`)
+  }
+  return res.json()
+}
+
+export function deleteFile(repoId: number, path: string) {
+  return request<{ success: boolean }>('DELETE', `/api/repos/${repoId}/files?path=${encodeURIComponent(path)}`)
+}
+
+export function mkdir(repoId: number, path: string) {
+  return request<{ success: boolean }>('POST', `/api/repos/${repoId}/mkdir?path=${encodeURIComponent(path)}`)
+}
+
+export function moveFile(repoId: number, from: string, to: string) {
+  const params = new URLSearchParams({ from, to })
+  return request<{ success: boolean }>('POST', `/api/repos/${repoId}/move?${params}`)
+}
+
+export function getStatus(repoId: number) {
+  return request<{ pending: boolean; changes: WorkingTreeChange[] }>('GET', `/api/repos/${repoId}/status`)
+}
+
+export function commitRepo(repoId: number, message: string) {
+  return request<{ success: boolean }>('POST', `/api/repos/${repoId}/commit`, { message })
+}
+
+const TEXT_EXTENSIONS = new Set([
+  'txt', 'md', 'markdown', 'html', 'htm', 'css', 'js', 'ts', 'jsx', 'tsx',
+  'json', 'yaml', 'yml', 'toml', 'xml', 'svg', 'csv',
+  'sh', 'bash', 'zsh', 'fish',
+  'py', 'rb', 'rs', 'go', 'java', 'c', 'h', 'cpp', 'hpp', 'cs', 'swift', 'kt',
+  'sql', 'r', 'vue', 'svelte', 'astro', 'php',
+  'conf', 'ini', 'cfg', 'env', 'gitignore', 'dockerfile',
+  'lock', 'sum',
+])
+
+export function isTextFile(name: string): boolean {
+  const i = name.lastIndexOf('.')
+  if (i === -1) return false
+  return TEXT_EXTENSIONS.has(name.slice(i + 1).toLowerCase())
+}
+
 export function getAppsConfig(repoId: number) {
   return request<AppStatusResponse>('GET', `/api/apps/${repoId}`)
 }

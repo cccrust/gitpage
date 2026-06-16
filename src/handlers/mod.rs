@@ -4,3 +4,4 @@ pub mod repos;
 pub mod content;
 pub mod pages;
 pub mod git_smart;
+pub mod files;

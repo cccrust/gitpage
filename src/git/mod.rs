@@ -325,6 +325,85 @@ fn walk_tree_for_pages(repo: &git2::Repository, tree: &git2::Tree, out_dir: &std
     Ok(())
 }
 
+/// Commit staging directory contents to bare repo using git2 TreeBuilder.
+/// Commit staging directory contents to bare repo, overlaying on top of the
+/// parent tree so existing files are preserved.
+pub fn commit_staging(bare_path: &str, staging_path: &str, message: &str, author: &str, branch: &str) -> Result<(), AppError> {
+    let repo = git2::Repository::open_bare(bare_path)?;
+    let sig = git2::Signature::now(author, "gitpage@localhost")?;
+
+    let branch_ref = format!("refs/heads/{}", branch);
+
+    // Get parent tree if a commit already exists
+    let parent_tree: Option<git2::Tree> = match repo.refname_to_id(&branch_ref) {
+        Ok(oid) => {
+            match repo.find_commit(oid) {
+                Ok(c) => c.tree().ok(),
+                Err(_) => None,
+            }
+        }
+        Err(_) => None,
+    };
+
+    // Build tree starting from parent, overlaying staging files
+    let tree_oid = build_tree_from_dir(&repo, staging_path, parent_tree.as_ref())?;
+    let tree = repo.find_tree(tree_oid)?;
+
+    // Parent commits
+    let parents: Vec<git2::Commit> = match repo.refname_to_id(&branch_ref) {
+        Ok(oid) => repo.find_commit(oid).ok().into_iter().collect(),
+        Err(_) => Vec::new(),
+    };
+    let parent_refs: Vec<&git2::Commit> = parents.iter().collect();
+
+    repo.commit(
+        Some(&branch_ref),
+        &sig, &sig, message, &tree,
+        &parent_refs,
+    )?;
+
+    // Clear staging directory
+    let staging = std::path::Path::new(staging_path);
+    if staging.exists() {
+        std::fs::remove_dir_all(staging)?;
+    }
+    std::fs::create_dir_all(staging)?;
+
+    Ok(())
+}
+
+/// Build a git tree from a directory. If `parent` is provided, the new tree
+/// starts with all entries from the parent, then staging entries are
+/// added/updated on top.
+fn build_tree_from_dir(repo: &git2::Repository, dir: &str, parent: Option<&git2::Tree>) -> Result<git2::Oid, AppError> {
+    let mut tb = repo.treebuilder(parent)?;
+
+    let mut entries: Vec<_> = std::fs::read_dir(dir)?
+        .filter_map(|e| e.ok())
+        .collect();
+    entries.sort_by_key(|e| e.file_name());
+
+    for entry in entries {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name.starts_with('.') { continue; }
+        let path = entry.path();
+        if path.is_dir() {
+            // Get parent's subtree for this directory so existing files inside are preserved
+            let sub_parent = parent
+                .and_then(|t| t.get_name(&name))
+                .and_then(|e| e.to_object(repo).ok())
+                .and_then(|o| o.peel_to_tree().ok());
+            let sub_oid = build_tree_from_dir(repo, path.to_str().unwrap(), sub_parent.as_ref())?;
+            tb.insert(&name, sub_oid, git2::FileMode::Tree.into())?;
+        } else {
+            let content = std::fs::read(&path)?;
+            let blob_oid = repo.blob(&content)?;
+            tb.insert(&name, blob_oid, git2::FileMode::Blob.into())?;
+        }
+    }
+    Ok(tb.write()?)
+}
+
 pub fn get_commit_log(repo_path: &str, branch: &str, limit: usize) -> Result<Vec<(String, String, String, String)>, AppError> {
     let repo = git2::Repository::open_bare(repo_path)?;
 

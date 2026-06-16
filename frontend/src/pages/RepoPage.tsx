@@ -57,6 +57,7 @@ export default function RepoPage() {
         {repo.description && <p className="desc">{repo.description}</p>}
         <div className="actions">
           <Link to={`/repo/${repo.id}/commits/${branch}`} className="btn-sm">Commits</Link>
+          <Link to={`/repo/${repo.id}/files`} className="btn-sm">Files</Link>
           <Link to={`/repo/${repo.id}/pages`} className="btn-sm">Pages</Link>
           <Link to={`/repo/${repo.id}/app`} className="btn-sm">App</Link>
           <Link to={`/repo/${repo.id}/settings`} className="btn-sm">Settings</Link>

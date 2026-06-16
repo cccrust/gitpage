@@ -71,6 +71,15 @@ pub struct CreateRepoRequest {
     pub name: String,
     pub description: Option<String>,
     pub is_private: Option<bool>,
+    pub created_via: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct FileEntry {
+    pub name: String,
+    pub is_dir: bool,
+    pub size: Option<i64>,
+    pub updated_at: String,
 }
 
 #[derive(Debug, Deserialize)]
