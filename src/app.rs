@@ -131,6 +131,17 @@ pub fn create_app(state: AppState) -> Router {
         .route("/api/repos/:repo_id/ssh-keys", post(handlers::ssh_keys::add_key))
         .route("/api/repos/:repo_id/ssh-keys/:key_id", delete(handlers::ssh_keys::delete_key))
 
+        // Org routes
+        .route("/api/orgs", get(handlers::orgs::list_my_orgs))
+        .route("/api/orgs", post(handlers::orgs::create_org))
+        .route("/api/orgs/:name", get(handlers::orgs::get_org))
+        .route("/api/orgs/:name", put(handlers::orgs::update_org))
+        .route("/api/orgs/:name", delete(handlers::orgs::delete_org))
+        .route("/api/orgs/:name/repos", get(handlers::orgs::list_org_repos))
+        .route("/api/orgs/:name/members", get(handlers::orgs::list_members))
+        .route("/api/orgs/:name/members", post(handlers::orgs::add_member))
+        .route("/api/orgs/:name/members/:user_id", delete(handlers::orgs::remove_member))
+
         .fallback(fallback_handler)
         .layer(middleware::from_fn(auth_middleware))
         .layer(cors)
@@ -221,12 +232,8 @@ async fn fallback_handler(
             let repo_name = parts[1];
             let subpath = parts.get(2).copied().unwrap_or("");
 
-            let user = match state.db.find_user_by_username(username).await {
-                Ok(Some(u)) => u,
-                _ => return (StatusCode::NOT_FOUND, "使用者不存在").into_response(),
-            };
-            let repo = match state.db.find_repo_by_name(user.id, repo_name).await {
-                Ok(Some(r)) => r,
+            let repo = match resolve_owner_and_repo(&state.db, username, repo_name).await {
+                Some((r, _)) => r,
                 _ => return (StatusCode::NOT_FOUND, "倉庫不存在").into_response(),
             };
 
@@ -311,17 +318,28 @@ async fn fallback_handler(
     (StatusCode::NOT_FOUND, "找不到頁面").into_response()
 }
 
-pub(crate) async fn auto_deploy_pages(state: AppState, username: String, repo_name: String) {
-    let repo_path = state.config.repo_path(&username, &repo_name);
-    let pages_dir = state.config.pages_dir(&username, &repo_name);
+async fn resolve_owner_and_repo(db: &crate::db::Database, owner_name: &str, repo_name: &str) -> Option<(crate::db::models::Repository, String)> {
+    // Try user first
+    if let Ok(Some(user)) = db.find_user_by_username(owner_name).await {
+        if let Ok(Some(repo)) = db.find_repo_by_name(user.id, repo_name).await {
+            return Some((repo, user.username));
+        }
+    }
+    // Try org
+    if let Ok(Some(org)) = db.find_org_by_name(owner_name).await {
+        if let Ok(Some(repo)) = db.find_org_repo_by_name(org.id, repo_name).await {
+            return Some((repo, org.name));
+        }
+    }
+    None
+}
 
-    // Find the repo in DB
-    let user = match state.db.find_user_by_username(&username).await {
-        Ok(Some(u)) => u,
-        _ => return,
-    };
-    let repo = match state.db.find_repo_by_name(user.id, &repo_name).await {
-        Ok(Some(r)) => r,
+pub(crate) async fn auto_deploy_pages(state: AppState, owner_name: String, repo_name: String) {
+    let repo_path = state.config.repo_path(&owner_name, &repo_name);
+    let pages_dir = state.config.pages_dir(&owner_name, &repo_name);
+
+    let (repo, _) = match resolve_owner_and_repo(&state.db, &owner_name, &repo_name).await {
+        Some(r) => r,
         _ => return,
     };
 
@@ -331,16 +349,12 @@ pub(crate) async fn auto_deploy_pages(state: AppState, username: String, repo_na
     };
 
     let _ = crate::git::deploy_pages(&repo_path, &pages_dir, &cfg.branch, &cfg.source_dir);
-    tracing::info!("Pages deployed for {}/{}", username, repo_name);
+    tracing::info!("Pages deployed for {}/{}", owner_name, repo_name);
 }
 
-pub(crate) async fn auto_deploy_app(state: AppState, username: String, repo_name: String) {
-    let user = match state.db.find_user_by_username(&username).await {
-        Ok(Some(u)) => u,
-        _ => return,
-    };
-    let repo = match state.db.find_repo_by_name(user.id, &repo_name).await {
-        Ok(Some(r)) => r,
+pub(crate) async fn auto_deploy_app(state: AppState, owner_name: String, repo_name: String) {
+    let (repo, _) = match resolve_owner_and_repo(&state.db, &owner_name, &repo_name).await {
+        Some(r) => r,
         _ => return,
     };
 
@@ -349,10 +363,10 @@ pub(crate) async fn auto_deploy_app(state: AppState, username: String, repo_name
         _ => return,
     };
 
-    let repo_path = state.config.repo_path(&username, &repo_name);
-    let workspace = state.config.app_workspace_dir(&username, &repo_name);
+    let repo_path = state.config.repo_path(&owner_name, &repo_name);
+    let workspace = state.config.app_workspace_dir(&owner_name, &repo_name);
 
-    let mut deploy_log = match state.db.create_deploy_log(repo.id).await {
+    let deploy_log = match state.db.create_deploy_log(repo.id).await {
         Ok(l) => l,
         Err(e) => {
             tracing::error!("Failed to create deploy log: {}", e);
@@ -365,18 +379,18 @@ pub(crate) async fn auto_deploy_app(state: AppState, username: String, repo_name
         &repo_path,
         &workspace,
         &cfg,
-        &username,
+        &owner_name,
         &repo_name,
         repo.id,
     ).await {
         Ok((port, log)) => {
             let _ = state.db.update_deploy_log(deploy_log.id, "success", &log).await;
-            tracing::info!("App deployed for {}/{} on port {}", username, repo_name, port);
+            tracing::info!("App deployed for {}/{} on port {}", owner_name, repo_name, port);
         }
         Err(e) => {
             let log = format!("Deploy failed: {}", e);
             let _ = state.db.update_deploy_log(deploy_log.id, "failed", &log).await;
-            tracing::error!("App deploy failed for {}/{}: {}", username, repo_name, e);
+            tracing::error!("App deploy failed for {}/{}: {}", owner_name, repo_name, e);
         }
     }
 }

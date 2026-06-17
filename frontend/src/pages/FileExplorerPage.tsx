@@ -39,7 +39,7 @@ export default function FileExplorerPage() {
     try {
       const r = await getRepo(numId)
       setRepo(r.repo)
-      setUsername(r.username)
+      setUsername(r.org_name || r.username)
       setRepoName(r.repo.name)
 
       const [treeRes, statusRes] = await Promise.all([

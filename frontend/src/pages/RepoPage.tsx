@@ -24,7 +24,7 @@ export default function RepoPage() {
     getRepo(numId)
       .then(async r => {
         setRepo(r.repo)
-        const uname = r.username
+        const uname = r.org_name || r.username
         const rname = r.repo.name
         setUsername(uname)
         setRepoName(rname)

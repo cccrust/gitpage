@@ -57,6 +57,8 @@ export interface Repo {
   description: string
   is_private: boolean
   default_branch: string
+  owner_type?: string
+  org_id?: number | null
   created_at: string
   updated_at: string
 }
@@ -92,6 +94,67 @@ export interface CommitInfo {
   time: string
 }
 
+export interface Organization {
+  id: number
+  name: string
+  display_name: string
+  description: string
+  owner_id: number
+  created_at: string
+}
+
+export interface OrganizationWithRole extends Organization {
+  role: string
+}
+
+export interface OrgMember {
+  id: number
+  user_id: number
+  org_id: number
+  role: string
+  username: string
+  bio: string
+  created_at: string
+}
+
+// ── Organizations ──
+
+export function listMyOrgs() {
+  return request<{ orgs: OrganizationWithRole[] }>('GET', '/api/orgs')
+}
+
+export function createOrg(name: string, displayName: string, description: string) {
+  return request<{ org: Organization }>('POST', '/api/orgs', { name, display_name: displayName, description })
+}
+
+export function getOrg(name: string) {
+  return request<{ org: Organization; role?: string }>('GET', `/api/orgs/${name}`)
+}
+
+export function updateOrg(name: string, data: { display_name?: string; description?: string }) {
+  return request<{ org: Organization }>('PUT', `/api/orgs/${name}`, data)
+}
+
+export function deleteOrg(name: string) {
+  return request<{ deleted: boolean }>('DELETE', `/api/orgs/${name}`)
+}
+
+export function listOrgRepos(name: string) {
+  return request<{ repos: Repo[]; org: Organization }>('GET', `/api/orgs/${name}/repos`)
+}
+
+export function listOrgMembers(name: string) {
+  return request<{ members: OrgMember[]; org: Organization }>('GET', `/api/orgs/${name}/members`)
+}
+
+export function addOrgMember(name: string, username: string, role?: string) {
+  return request<{ success: boolean; member: OrgMember }>('POST', `/api/orgs/${name}/members`, { username, role })
+}
+
+export function removeOrgMember(name: string, userId: number) {
+  return request<{ success: boolean }>('DELETE', `/api/orgs/${name}/members/${userId}`)
+}
+
 // ── Auth ──
 
 export function register(username: string, email: string, password: string) {
@@ -112,12 +175,12 @@ export function listRepos() {
   return request<{ repos: Repo[] }>('GET', '/api/repos')
 }
 
-export function createRepo(name: string, description?: string, is_private?: boolean) {
-  return request<{ repo: Repo }>('POST', '/api/repos', { name, description, is_private })
+export function createRepo(name: string, description?: string, is_private?: boolean, orgName?: string) {
+  return request<{ repo: Repo }>('POST', '/api/repos', { name, description, is_private, org_name: orgName })
 }
 
 export function getRepo(id: number) {
-  return request<{ repo: Repo; username: string }>('GET', `/api/repos/${id}`)
+  return request<{ repo: Repo; username: string; org_name?: string }>('GET', `/api/repos/${id}`)
 }
 
 export function deleteRepo(id: number) {

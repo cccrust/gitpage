@@ -30,7 +30,7 @@ export default function PagesSettingsPage() {
     ])
       .then(([repoRes, pagesRes]) => {
         setRepo(repoRes.repo)
-        setUsername(repoRes.username)
+        setUsername(repoRes.org_name || repoRes.username)
         const c = pagesRes.pages_config
         setCfg(c)
         if (c) {

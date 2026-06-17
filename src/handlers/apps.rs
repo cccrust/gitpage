@@ -55,7 +55,7 @@ async fn do_deploy(state: &AppState, repo_id: i64, user_id: i64) -> Result<Json<
     let workspace = state.config.app_workspace_dir(&user.username, &repo.name);
 
     // Create deploy log
-    let mut deploy_log = state.db.create_deploy_log(repo_id).await?;
+    let deploy_log = state.db.create_deploy_log(repo_id).await?;
 
     match crate::deploy::deploy_app(
         &state.app_manager,

@@ -8,12 +8,25 @@ use serde_json::{json, Value};
 use std::path::Path as StdPath;
 
 use crate::app::AppState;
-use crate::db::models::FileEntry;
+use crate::db::models::{FileEntry, Repository};
 use crate::git;
 use crate::utils::errors::AppError;
 
-fn staging_base<'a>(state: &'a AppState, username: &str, repo: &str) -> String {
-    state.config.staging_path(username, repo)
+async fn resolve_owner_name(state: &AppState, repo: &Repository) -> Result<String, AppError> {
+    if repo.owner_type == "org" {
+        if let Some(oid) = repo.org_id {
+            let org = state.db.find_org_by_id(oid).await?
+                .ok_or_else(|| AppError::NotFound("組織不存在".into()))?;
+            return Ok(org.name);
+        }
+    }
+    let user = state.db.find_user_by_id(repo.user_id).await?
+        .ok_or_else(|| AppError::NotFound("使用者不存在".into()))?;
+    Ok(user.username)
+}
+
+fn staging_base(state: &AppState, owner: &str, repo: &str) -> String {
+    state.config.staging_path(owner, repo)
 }
 
 fn safe_path(base: &str, file_path: &str) -> Result<String, AppError> {
@@ -83,14 +96,15 @@ pub struct TreeQuery {
 
 pub async fn tree(
     State(state): State<AppState>,
-    axum::Extension(username): axum::Extension<String>,
+    axum::Extension(_username): axum::Extension<String>,
     Path(repo_id): Path<i64>,
     Query(query): Query<TreeQuery>,
 ) -> Result<Json<Value>, AppError> {
     let repo = state.db.find_repo_by_id(repo_id).await?
         .ok_or_else(|| AppError::NotFound("倉庫不存在".into()))?;
 
-    let base = staging_base(&state, &username, &repo.name);
+    let owner_name = resolve_owner_name(&state, &repo).await?;
+    let base = staging_base(&state, &owner_name, &repo.name);
     let entries = list_staging_dir(&base, query.path.as_deref().unwrap_or("/"))?;
     Ok(Json(json!({ "entries": entries, "path": query.path.unwrap_or_else(|| "/".to_string()) })))
 }
@@ -102,14 +116,15 @@ pub struct RawQuery {
 
 pub async fn raw(
     State(state): State<AppState>,
-    axum::Extension(username): axum::Extension<String>,
+    axum::Extension(_username): axum::Extension<String>,
     Path(repo_id): Path<i64>,
     Query(query): Query<RawQuery>,
 ) -> Result<(StatusCode, [(String, String); 1], Vec<u8>), AppError> {
     let repo = state.db.find_repo_by_id(repo_id).await?
         .ok_or_else(|| AppError::NotFound("倉庫不存在".into()))?;
 
-    let base = staging_base(&state, &username, &repo.name);
+    let owner_name = resolve_owner_name(&state, &repo).await?;
+    let base = staging_base(&state, &owner_name, &repo.name);
     let full = safe_path(&base, &query.path)?;
     let content = std::fs::read(&full)
         .map_err(|_| AppError::NotFound("檔案不存在".into()))?;
@@ -143,7 +158,8 @@ pub async fn write_file(
     let repo = state.db.find_repo_by_id(repo_id).await?
         .ok_or_else(|| AppError::NotFound("倉庫不存在".into()))?;
 
-    let base = staging_base(&state, &username, &repo.name);
+    let owner_name = resolve_owner_name(&state, &repo).await?;
+    let base = staging_base(&state, &owner_name, &repo.name);
     let full = safe_path(&base, &query.path)?;
     if let Some(parent) = StdPath::new(&full).parent() {
         std::fs::create_dir_all(parent)?;
@@ -167,7 +183,8 @@ pub async fn delete_file(
     let repo = state.db.find_repo_by_id(repo_id).await?
         .ok_or_else(|| AppError::NotFound("倉庫不存在".into()))?;
 
-    let base = staging_base(&state, &username, &repo.name);
+    let owner_name = resolve_owner_name(&state, &repo).await?;
+    let base = staging_base(&state, &owner_name, &repo.name);
     let full = safe_path(&base, &query.path)?;
     let p = StdPath::new(&full);
     if p.exists() {
@@ -195,7 +212,8 @@ pub async fn mkdir(
     let repo = state.db.find_repo_by_id(repo_id).await?
         .ok_or_else(|| AppError::NotFound("倉庫不存在".into()))?;
 
-    let base = staging_base(&state, &username, &repo.name);
+    let owner_name = resolve_owner_name(&state, &repo).await?;
+    let base = staging_base(&state, &owner_name, &repo.name);
     let full = safe_path(&base, &query.path)?;
     std::fs::create_dir_all(&full)?;
 
@@ -217,7 +235,8 @@ pub async fn move_file(
     let repo = state.db.find_repo_by_id(repo_id).await?
         .ok_or_else(|| AppError::NotFound("倉庫不存在".into()))?;
 
-    let base = staging_base(&state, &username, &repo.name);
+    let owner_name = resolve_owner_name(&state, &repo).await?;
+    let base = staging_base(&state, &owner_name, &repo.name);
     if query.from.contains("..") || query.to.contains("..") {
         return Err(AppError::BadRequest("不允許的路徑跳躍".into()));
     }
@@ -239,7 +258,8 @@ pub async fn status(
     let repo = state.db.find_repo_by_id(repo_id).await?
         .ok_or_else(|| AppError::NotFound("倉庫不存在".into()))?;
 
-    let base = staging_base(&state, &username, &repo.name);
+    let owner_name = resolve_owner_name(&state, &repo).await?;
+    let base = staging_base(&state, &owner_name, &repo.name);
     let changes = list_staging_changes(&base)?;
     let pending = !changes.is_empty();
 
@@ -264,8 +284,9 @@ pub async fn commit(
     let repo = state.db.find_repo_by_id(repo_id).await?
         .ok_or_else(|| AppError::NotFound("倉庫不存在".into()))?;
 
-    let bare_path = state.config.repo_path(&username, &repo.name);
-    let staging_path = state.config.staging_path(&username, &repo.name);
+    let owner_name = resolve_owner_name(&state, &repo).await?;
+    let bare_path = state.config.repo_path(&owner_name, &repo.name);
+    let staging_path = state.config.staging_path(&owner_name, &repo.name);
 
     // Check staging has files
     let changes = list_staging_changes(&staging_path)?;
@@ -278,12 +299,12 @@ pub async fn commit(
     // Trigger auto-deploy
     tokio::spawn(crate::app::auto_deploy_pages(
         state.clone(),
-        username.clone(),
+        owner_name.clone(),
         repo.name.clone(),
     ));
     tokio::spawn(crate::app::auto_deploy_app(
         state.clone(),
-        username.clone(),
+        owner_name.clone(),
         repo.name.clone(),
     ));
 

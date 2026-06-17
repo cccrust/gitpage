@@ -20,7 +20,7 @@ export default function CommitsPage() {
     getRepo(numId)
       .then(async r => {
         setRepo(r.repo)
-        const uname = r.username
+        const uname = r.org_name || r.username
         const commitsRes = await listCommits(uname, r.repo.name, br)
         setCommits(commitsRes.commits)
       })

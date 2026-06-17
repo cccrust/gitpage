@@ -40,8 +40,55 @@ pub struct Repository {
     pub description: String,
     pub is_private: bool,
     pub default_branch: String,
+    pub owner_type: String,
+    pub org_id: Option<i64>,
     pub created_at: String,
     pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Organization {
+    pub id: i64,
+    pub name: String,
+    pub display_name: String,
+    pub description: String,
+    pub owner_id: i64,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OrganizationMember {
+    pub id: i64,
+    pub org_id: i64,
+    pub user_id: i64,
+    pub role: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OrganizationWithRole {
+    pub id: i64,
+    pub name: String,
+    pub display_name: String,
+    pub description: String,
+    pub owner_id: i64,
+    pub role: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct OrgRepoResult {
+    pub id: i64,
+    pub user_id: i64,
+    pub name: String,
+    pub description: String,
+    pub is_private: bool,
+    pub default_branch: String,
+    pub owner_type: String,
+    pub org_id: Option<i64>,
+    pub created_at: String,
+    pub updated_at: String,
+    pub org_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -72,6 +119,7 @@ pub struct CreateRepoRequest {
     pub description: Option<String>,
     pub is_private: Option<bool>,
     pub created_via: Option<String>,
+    pub org_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]

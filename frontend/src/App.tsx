@@ -17,6 +17,11 @@ import UserProfilePage from './pages/UserProfilePage'
 import UserSettingsPage from './pages/UserSettingsPage'
 import RepoSettingsPage from './pages/RepoSettingsPage'
 import RepoSSHKeysPage from './pages/RepoSSHKeysPage'
+import OrgList from './pages/OrgList'
+import OrgCreate from './pages/OrgCreate'
+import OrgDetail from './pages/OrgDetail'
+import OrgSettings from './pages/OrgSettings'
+import OrgMembers from './pages/OrgMembers'
 
 export default function App() {
   return (
@@ -41,6 +46,11 @@ export default function App() {
           <Route path="/repo/:id/ssh" element={<RepoSSHKeysPage />} />
           <Route path="/u/:username" element={<UserProfilePage />} />
           <Route path="/settings" element={<UserSettingsPage />} />
+          <Route path="/orgs" element={<OrgList />} />
+          <Route path="/orgs/new" element={<OrgCreate />} />
+          <Route path="/org/:name/members" element={<OrgMembers />} />
+          <Route path="/org/:name/settings" element={<OrgSettings />} />
+          <Route path="/org/:name" element={<OrgDetail />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Layout>

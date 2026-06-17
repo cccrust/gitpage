@@ -10,20 +10,41 @@ use crate::db::models::Repository;
 use crate::git;
 use crate::utils::errors::AppError;
 
-async fn resolve_repo(state: &AppState, username: &str, repo_name: &str, auth_user_id: Option<i64>) -> Result<Repository, AppError> {
-    let user = state.db.find_user_by_username(username).await?
-        .ok_or_else(|| AppError::NotFound("使用者不存在".into()))?;
-    let repo = state.db.find_repo_by_name(user.id, repo_name).await?
-        .ok_or_else(|| AppError::NotFound("倉庫不存在".into()))?;
-
-    if repo.is_private {
-        match auth_user_id {
-            Some(uid) if uid == repo.user_id => {}
-            _ => return Err(AppError::Unauthorized("私有倉庫".into())),
+async fn resolve_repo(state: &AppState, username: &str, repo_name: &str, auth_user_id: Option<i64>) -> Result<(Repository, String), AppError> {
+    // Try user first, then org
+    if let Ok(Some(user)) = state.db.find_user_by_username(username).await {
+        if let Some(repo) = state.db.find_repo_by_name(user.id, repo_name).await? {
+            let owner_name = user.username.clone();
+            if repo.is_private {
+                match auth_user_id {
+                    Some(uid) if uid == repo.user_id => {}
+                    _ => return Err(AppError::Unauthorized("私有倉庫".into())),
+                }
+            }
+            return Ok((repo, owner_name));
         }
     }
 
-    Ok(repo)
+    // Try org
+    if let Ok(Some(org)) = state.db.find_org_by_name(username).await {
+        if let Some(repo) = state.db.find_org_repo_by_name(org.id, repo_name).await? {
+            if repo.is_private {
+                let has_access = match auth_user_id {
+                    Some(uid) => {
+                        let members = state.db.list_org_members(org.id).await.unwrap_or_default();
+                        members.iter().any(|(_, u)| u.id == uid)
+                    }
+                    None => false,
+                };
+                if !has_access {
+                    return Err(AppError::Unauthorized("私有倉庫".into()));
+                }
+            }
+            return Ok((repo, org.name));
+        }
+    }
+
+    Err(AppError::NotFound("使用者或組織不存在".into()))
 }
 
 #[derive(Debug, Deserialize)]
@@ -50,12 +71,12 @@ pub async fn list_directory(
     user_id: Option<axum::Extension<i64>>,
 ) -> Result<Json<Value>, AppError> {
     let uid = user_id.map(|e| e.0);
-    let repo = resolve_repo(&state, &username, &repo_name, uid).await?;
+    let (repo, owner_name) = resolve_repo(&state, &username, &repo_name, uid).await?;
 
     let branch = query.branch.as_deref().unwrap_or(&repo.default_branch);
     let path = query.path.as_deref().unwrap_or("");
 
-    let repo_path = state.config.repo_path(&username, &repo_name);
+    let repo_path = state.config.repo_path(&owner_name, &repo_name);
     if !git::repo_exists(&repo_path) {
         return Ok(Json(json!({ "entries": [], "repo": repo, "branch": branch, "path": path })));
     }
@@ -80,12 +101,12 @@ pub async fn get_file_content(
     user_id: Option<axum::Extension<i64>>,
 ) -> Result<Json<Value>, AppError> {
     let uid = user_id.map(|e| e.0);
-    let repo = resolve_repo(&state, &username, &repo_name, uid).await?;
+    let (repo, owner_name) = resolve_repo(&state, &username, &repo_name, uid).await?;
 
     let branch = query.branch.as_deref().unwrap_or(&repo.default_branch);
     let path = query.path.trim_start_matches('/');
 
-    let repo_path = state.config.repo_path(&username, &repo_name);
+    let repo_path = state.config.repo_path(&owner_name, &repo_name);
     let result = git::get_file_content(&repo_path, branch, path)?;
 
     match result {
@@ -120,10 +141,10 @@ pub async fn get_readme(
     user_id: Option<axum::Extension<i64>>,
 ) -> Result<Json<Value>, AppError> {
     let uid = user_id.map(|e| e.0);
-    let _repo = resolve_repo(&state, &username, &repo_name, uid).await?;
+    let (_repo, owner_name) = resolve_repo(&state, &username, &repo_name, uid).await?;
 
     let branch = query.branch.as_deref().unwrap_or("main");
-    let repo_path = state.config.repo_path(&username, &repo_name);
+    let repo_path = state.config.repo_path(&owner_name, &repo_name);
     let readme = git::get_readme(&repo_path, branch)?;
 
     match readme {
@@ -145,9 +166,9 @@ pub async fn list_commits(
     user_id: Option<axum::Extension<i64>>,
 ) -> Result<Json<Value>, AppError> {
     let uid = user_id.map(|e| e.0);
-    let repo = resolve_repo(&state, &username, &repo_name, uid).await?;
+    let (repo, owner_name) = resolve_repo(&state, &username, &repo_name, uid).await?;
 
-    let repo_path = state.config.repo_path(&username, &repo_name);
+    let repo_path = state.config.repo_path(&owner_name, &repo_name);
     let commits = git::get_commit_log(&repo_path, &branch, 50)?;
 
     let commits_json: Vec<Value> = commits.iter().map(|(sha, msg, author, time)| {

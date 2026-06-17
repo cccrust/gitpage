@@ -1,14 +1,29 @@
 use axum::{
     extract::{Path, State},
-    http::StatusCode,
     Json,
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
 
 use crate::app::AppState;
+use crate::db::models::Repository;
 use crate::ssh::regenerate_authorized_keys;
 use crate::utils::errors::AppError;
+
+async fn check_repo_permission(state: &AppState, repo: &Repository, user_id: i64) -> Result<(), AppError> {
+    if repo.user_id == user_id {
+        return Ok(());
+    }
+    if repo.owner_type == "org" {
+        if let Some(oid) = repo.org_id {
+            let members = state.db.list_org_members(oid).await?;
+            if members.iter().any(|(m, u)| u.id == user_id && m.role == "admin") {
+                return Ok(());
+            }
+        }
+    }
+    Err(AppError::Unauthorized("無權限操作".into()))
+}
 
 #[derive(Debug, Deserialize)]
 pub struct AddSshKeyRequest {
@@ -45,9 +60,7 @@ pub async fn list_keys(
     let repo = state.db.find_repo_by_id(repo_id).await?
         .ok_or_else(|| AppError::NotFound("倉庫不存在".into()))?;
 
-    if repo.user_id != user_id {
-        return Err(AppError::Unauthorized("無權限操作".into()));
-    }
+    check_repo_permission(&state, &repo, user_id).await?;
 
     let keys = state.db.list_ssh_keys(repo_id).await?;
     Ok(Json(json!({ "ssh_keys": keys })))
@@ -62,9 +75,7 @@ pub async fn add_key(
     let repo = state.db.find_repo_by_id(repo_id).await?
         .ok_or_else(|| AppError::NotFound("倉庫不存在".into()))?;
 
-    if repo.user_id != user_id {
-        return Err(AppError::Unauthorized("無權限操作".into()));
-    }
+    check_repo_permission(&state, &repo, user_id).await?;
 
     validate_public_key(&req.public_key)?;
 
@@ -85,9 +96,7 @@ pub async fn delete_key(
     let repo = state.db.find_repo_by_id(repo_id).await?
         .ok_or_else(|| AppError::NotFound("倉庫不存在".into()))?;
 
-    if repo.user_id != user_id {
-        return Err(AppError::Unauthorized("無權限操作".into()));
-    }
+    check_repo_permission(&state, &repo, user_id).await?;
 
     let deleted = state.db.delete_ssh_key(key_id, user_id).await?;
     if !deleted {

@@ -42,7 +42,7 @@ export default function FileViewPage() {
     getRepo(numId)
       .then(async r => {
         setRepo(r.repo)
-        const uname = r.username
+        const uname = r.org_name || r.username
         const rname = r.repo.name
 
         try {

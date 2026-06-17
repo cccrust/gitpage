@@ -49,17 +49,36 @@ Sections: `[server]`, `[database]`, `[storage]`, `[jwt]`, `[ssh]`, `[cors]`, `[u
 | `src/ssh.rs` | `regenerate_authorized_keys()` writes `~/.ssh/authorized_keys` + `~/.ssh/gitpage-shell` |
 | `src/git/mod.rs` | libgit2 tree/blob/log + git http-backend spawn |
 | `src/app.rs` | Routes + fallback handler + auto-deploy on git push |
-| `src/handlers/` | One file per domain |
+| `src/handlers/` | One file per domain (auth, repos, content, pages, files, ssh_keys, apps, orgs) |
 | `src/db/mod.rs` | All DB operations, migrations at startup |
+
+## Repo Ownership: Users & Orgs
+
+Repos have `owner_type` (`"user"` or `"org"`) and optional `org_id`. Content routes resolve `:username` against both users and orgs. Repository disk paths use the owner name: `data/repos/{owner}/{repo}.git`, `data/staging/{owner}/{repo}/`.
+
+## Content Route Resolution
+
+The `resolve_repo()` helper in `content.rs` tries user lookup first, then org. Returns `(Repository, owner_name)` where `owner_name` is the resolved user/org name used for filesystem paths.
+
+## Org Features (v1.0.1)
+
+- `organizations` + `organization_members` tables
+- Org CRUD (`handlers/orgs.rs`)
+- Member management (admin/member roles)
+- Repo ownership by org (stored at `data/repos/{org}/{repo}.git`)
+- SSH key management respects org admin permissions
+- Auto-deploy uses `resolve_owner_and_repo` in `app.rs`
+- Frontend pages: OrgList, OrgCreate, OrgDetail, OrgSettings, OrgMembers
+- Routes: `/orgs`, `/org/:name`, `/org/:name/settings`, `/org/:name/members`
 
 ## Files: Staging, Not Direct Git
 
-Staging area at `data/staging/{user}/{repo}/`. `POST /api/repos/:repo_id/commit` builds a git tree + commit from staged files. Staging dirs created/deleted alongside repos.
+Staging area at `data/staging/{owner}/{repo}/`. `POST /api/repos/:repo_id/commit` builds a git tree + commit from staged files. The owner is resolved from the repo (user or org) before computing paths. Staging dirs created/deleted alongside repos.
 
 ## Frontend Notes
 
 - All user-facing strings in Chinese
-- `api.ts` has `request<T>(method, path, body)` — injects JWT from `localStorage`
+- `api.ts` has `request<T>(method, path, body)` — injects JWT from `localStorage`. Org API: `listMyOrgs`, `createOrg`, `getOrg`, `updateOrg`, `deleteOrg`, `listOrgRepos`, `listOrgMembers`, `addOrgMember`, `removeOrgMember`
 - Routes defined in `App.tsx`, pages in `frontend/src/pages/`
 - Components: `Layout.tsx` (top + bottom nav), `MarkdownView.tsx`, `Spinner.tsx`, `Pagination.tsx`
 
