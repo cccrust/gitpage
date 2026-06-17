@@ -183,8 +183,49 @@ pub async fn list_commits(
 }
 
 fn render_markdown(text: &str) -> String {
-    let parser = pulldown_cmark::Parser::new(text);
+    // Protect math expressions from pulldown-cmark mangling (_, ^, etc.)
+    let (clean, blocks) = extract_math(text);
+    let parser = pulldown_cmark::Parser::new(&clean);
     let mut html = String::new();
     pulldown_cmark::html::push_html(&mut html, parser);
+    // Restore math with KaTeX-compatible delimiters
+    for (placeholder, content) in &blocks {
+        let math_class = if content.contains("$$") {
+            let inner = content.replace("$$", "");
+            format!("<div class=\"math-display\">\\[{} \\]</div>", inner)
+        } else {
+            format!("<span class=\"math-inline\">\\({}\\)</span>", content)
+        };
+        html = html.replace(placeholder, &math_class);
+    }
     html
+}
+
+/// Extract `$$...$$` (display) and `$...$` (inline) math, replace with
+/// null-byte placeholders that pulldown-cmark won't touch.
+fn extract_math(text: &str) -> (String, Vec<(String, String)>) {
+    let re_display = regex::Regex::new(r"\$\$([\s\S]*?)\$\$").unwrap();
+    let re_inline = regex::Regex::new(r"\$([^$\n]+?)\$").unwrap();
+
+    let mut blocks: Vec<(String, String)> = Vec::new();
+    let mut result = text.to_string();
+    let mut i = 0usize;
+
+    // 1) Replace display math `$$...$$`
+    result = re_display.replace_all(&result, |_caps: &regex::Captures| {
+        let placeholder = format!("\x00M{}D\x00", i);
+        blocks.push((placeholder.clone(), format!("$${}$$", &_caps[1])));
+        i += 1;
+        placeholder
+    }).to_string();
+
+    // 2) Replace inline math `$...$` (display already removed, so single `$` is safe)
+    result = re_inline.replace_all(&result, |_caps: &regex::Captures| {
+        let placeholder = format!("\x00M{}I\x00", i);
+        blocks.push((placeholder.clone(), _caps[1].to_string()));
+        i += 1;
+        placeholder
+    }).to_string();
+
+    (result, blocks)
 }
