@@ -107,6 +107,9 @@ pub async fn get_file_content(
     let path = query.path.trim_start_matches('/');
 
     let repo_path = state.config.repo_path(&owner_name, &repo_name);
+    if !git::repo_exists(&repo_path) {
+        return Err(AppError::NotFound("倉庫不存在".into()));
+    }
     let result = git::get_file_content(&repo_path, branch, path)?;
 
     match result {
@@ -145,6 +148,9 @@ pub async fn get_readme(
 
     let branch = query.branch.as_deref().unwrap_or("main");
     let repo_path = state.config.repo_path(&owner_name, &repo_name);
+    if !git::repo_exists(&repo_path) {
+        return Ok(Json(json!({ "has_readme": false })));
+    }
     let readme = git::get_readme(&repo_path, branch)?;
 
     match readme {
@@ -169,6 +175,9 @@ pub async fn list_commits(
     let (repo, owner_name) = resolve_repo(&state, &username, &repo_name, uid).await?;
 
     let repo_path = state.config.repo_path(&owner_name, &repo_name);
+    if !git::repo_exists(&repo_path) {
+        return Ok(Json(json!({ "commits": [], "repo": repo, "branch": branch })));
+    }
     let commits = git::get_commit_log(&repo_path, &branch, 50)?;
 
     let commits_json: Vec<Value> = commits.iter().map(|(sha, msg, author, time)| {

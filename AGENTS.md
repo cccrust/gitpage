@@ -85,9 +85,26 @@ Staging area at `data/staging/{owner}/{repo}/`. `POST /api/repos/:repo_id/commit
 ## Testing
 
 ```bash
-./test.sh    # bash + set -x, no test framework, deletes data/ and starts fresh
+./test.sh         # Integration test (no Docker)
+./test_docker.sh  # Same integration test inside Docker containers
 ```
-Test removes `data/` and kills existing `gitpage` processes. Must not run concurrently with seed.sh.
+
+Both use `bash + set -x`, no test framework. Must not run concurrently with seed.sh.
+
+## Docker
+
+Two modes fully supported:
+
+| Mode | Build | Run | Test |
+|------|-------|-----|------|
+| No Docker | `cargo build` | `cargo run` / `./run.sh` | `./test.sh` |
+| Docker | `docker build` | `./run_docker.sh` | `./test_docker.sh` |
+
+- `Dockerfile` — multi-stage: Node → Rust → Debian slim runtime
+- `run_docker.sh` — builds image, mounts `data/` volume, runs on `:8080` + SSH on `:2222`
+- `test_docker.sh` — builds image, starts container on `:18080`, runs full test suite
+- `entrypoint.sh` — container entrypoint: generates SSH host keys, starts sshd, then gitpage
+- `.dockerignore` — excludes build artifacts, git history, scripts
 
 ## Project Structure
 
@@ -102,16 +119,22 @@ data/
 _doc/                  — Version docs + API reference (api.md)
 migrations/init.sql    — Stale; actual migrations run from src/db/mod.rs
 config.toml            — All configuration
-run.sh                 — Prod start: builds frontend + backend release
+Dockerfile             — Multi-stage Docker build
+.dockerignore          — Docker build context exclusions
+entrypoint.sh          — Container entrypoint (sshd + gitpage)
+run.sh                 — Prod start (no Docker): builds frontend + backend release
+test.sh                — Integration test (no Docker)
 seed.sh                — Demo data
-test.sh                — Integration test
+run_docker.sh          — Docker build + run
+test_docker.sh         — Integration test inside Docker
 frontend/vite.config.ts— Dev proxy: /api, /git, /pages → :8080
 ```
 
 ## Gotchas
 
-- `test.sh` deletes `data/` at start — don't run with active data
-- `seed.sh` starts its own server if none running (also deletes `data/` via `rm -rf data`)
+- `test.sh` preserves existing `data/` (no `rm -rf data`) — use `seed.sh` for fresh state
+- `seed.sh` starts its own server if none running (deletes `data/` via `rm -rf data`)
+- `test_docker.sh` uses isolated temp data dir (`/tmp/gptest-docker-data`), no impact on host
 - App processes are lost on server restart (DB config persists, subprocesses don't)
 - SSH: `~/.ssh/authorized_keys` and `~/.ssh/gitpage-shell` are auto-managed — don't edit manually
 - libgit2 errors are wrapped as `AppError::Internal` in Chinese

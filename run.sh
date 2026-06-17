@@ -23,6 +23,7 @@ cargo build --release 2>&1 | tail -3
 echo ""
 echo "=== Start server ==="
 echo "Open http://localhost:$PORT"
+echo "SSH   ssh $(whoami)@localhost  (use your system account)"
 echo ""
 
 exec cargo run --release

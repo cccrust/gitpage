@@ -1,0 +1,43 @@
+# ============================================================
+# Base image: all dev tools pre-installed
+# Build once:  docker build -t gitpage-dev-base:latest -f Dockerfile.base .
+# Rebuild only when tools need updating (rare)
+# ============================================================
+FROM debian:bookworm-slim
+
+# System packages + opencode CLI
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    curl \
+    git \
+    openssh-client \
+    openssh-server \
+    nodejs \
+    npm \
+    && rm -rf /var/lib/apt/lists/* \
+    && curl -fsSL https://opencode.ai/install | bash
+
+# uv (Python package manager) + Python 3.12
+RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh \
+    && uv python install 3.12 \
+    && cp $(uv python find) /usr/local/bin/python \
+    && ln -sf /usr/local/bin/python /usr/local/bin/python3
+
+# Rust toolchain (rustup + rustc/cargo) — install system-wide
+RUN rm -rf /root/.rustup /root/.cargo \
+    && export RUSTUP_HOME=/usr/local/rustup CARGO_HOME=/usr/local/cargo \
+    && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y \
+    && export PATH="/usr/local/cargo/bin:$PATH" \
+    && rustup default stable \
+    && chmod -R a+rX /usr/local/rustup /usr/local/cargo \
+    && for f in /usr/local/rustup/toolchains/*/bin/*; do \
+         ln -sf "$f" /usr/local/bin/; \
+       done \
+    && echo 'export RUSTUP_HOME=/usr/local/rustup' > /etc/profile.d/rustup.sh \
+    && echo 'export CARGO_HOME=/usr/local/cargo' >> /etc/profile.d/rustup.sh
+
+# SSH configuration
+RUN sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config \
+    && sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config \
+    && sed -i 's/^#\?KbdInteractiveAuthentication.*/KbdInteractiveAuthentication yes/' /etc/ssh/sshd_config \
+    && sed -i 's/^#\?UsePAM.*/UsePAM no/' /etc/ssh/sshd_config

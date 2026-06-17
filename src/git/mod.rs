@@ -46,7 +46,8 @@ pub fn init_bare_repo(path: &str) -> Result<(), AppError> {
 }
 
 pub fn repo_exists(path: &str) -> bool {
-    Path::new(path).join("HEAD").exists()
+    let p = Path::new(path);
+    p.join("HEAD").exists() && p.join("objects").exists() && p.join("refs").exists()
 }
 
 pub fn handle_git_backend(

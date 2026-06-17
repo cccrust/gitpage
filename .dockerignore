@@ -1,0 +1,13 @@
+data/
+frontend/node_modules/
+frontend/dist/
+target/
+.git/
+*.md
+*.sh
+!entrypoint.sh
+_doc/
+migrations/
+test.sh
+seed.sh
+run.sh
