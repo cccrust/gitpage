@@ -15,6 +15,7 @@ use crate::auth;
 use crate::config::Config;
 use crate::db::Database;
 use crate::deploy::AppProcessManager;
+use crate::docker::DockerManager;
 use crate::handlers;
 
 #[derive(Clone)]
@@ -23,6 +24,7 @@ pub struct AppState {
     pub config: Arc<Config>,
     pub jwt_expires_hours: u64,
     pub app_manager: AppProcessManager,
+    pub docker: Option<DockerManager>,
 }
 
 async fn auth_middleware(
@@ -171,7 +173,7 @@ async fn fallback_handler(
 
             let path_info = format!("/{}/{}.git/{}", username, repo_name, subpath);
             let query = req.uri().query().map(|s| s.to_string());
-            let git_root = state.config.storage.base_path.clone();
+            let git_root = format!("{}/repos", state.config.storage.base_path);
             let content_type = req.headers()
                 .get(axum::http::header::CONTENT_TYPE)
                 .and_then(|v| v.to_str().ok())
@@ -239,7 +241,18 @@ async fn fallback_handler(
 
             if let Some(proc) = state.app_manager.get(repo.id).await {
                 if proc.status == crate::deploy::AppStatus::Running {
-                    let url = format!("http://127.0.0.1:{}/{}", proc.port, subpath);
+                    let host = if let Some(docker) = &state.docker {
+                        match docker.get_container_ip(username).await {
+                            Ok(ip) => ip,
+                            Err(e) => {
+                                tracing::warn!("Docker IP lookup failed: {}, falling back to 127.0.0.1", e);
+                                "127.0.0.1".to_string()
+                            }
+                        }
+                    } else {
+                        "127.0.0.1".to_string()
+                    };
+                    let url = format!("http://{}:{}/{}", host, proc.port, subpath);
 
                     let client = reqwest::Client::new();
                     let body_bytes = axum::body::to_bytes(req.into_body(), 10 * 1024 * 1024).await.unwrap_or_default();
@@ -382,6 +395,7 @@ pub(crate) async fn auto_deploy_app(state: AppState, owner_name: String, repo_na
         &owner_name,
         &repo_name,
         repo.id,
+        state.docker.as_ref(),
     ).await {
         Ok((port, log)) => {
             let _ = state.db.update_deploy_log(deploy_log.id, "success", &log).await;

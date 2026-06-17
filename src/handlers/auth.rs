@@ -38,6 +38,12 @@ pub async fn register(
             AppError::Internal(format!("DB error: {}", e))
         })?;
 
+    // Create Docker container for user if runtime mode is docker
+    if let Some(docker) = &state.docker {
+        docker.ensure_user_container(&req.username).await
+            .map_err(|e| AppError::Internal(format!("容器創建失敗: {}", e)))?;
+    }
+
     let user_public: UserPublic = user.into();
     let token = create_token(&user_public, state.jwt_expires_hours)
         .map_err(|e| AppError::Internal(format!("JWT error: {}", e)))?;

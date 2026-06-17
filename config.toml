@@ -6,7 +6,7 @@ port = 8080
 path = "data/gitpage.db"
 
 [storage]
-base_path = "data/repos"
+base_path = "data"
 
 [jwt]
 secret = "gitpage-dev-secret-change-in-production"

@@ -3,6 +3,7 @@ use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use crate::db::models::AppsConfig;
+use crate::docker::DockerManager;
 use crate::utils::errors::AppError;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -178,7 +179,12 @@ pub async fn checkout_source(bare_repo_path: &str, workspace_dir: &str, branch: 
     Ok(())
 }
 
-pub async fn run_build(workspace_dir: &str, build_cmd: &str) -> Result<String, AppError> {
+pub async fn run_build(workspace_dir: &str, build_cmd: &str, docker: Option<&DockerManager>, username: &str, repo_name: &str) -> Result<String, AppError> {
+    if let Some(docker) = docker {
+        return docker.exec_build(username, repo_name, build_cmd).await
+            .map_err(|e| AppError::Internal(format!("Build failed: {}", e)));
+    }
+
     let source_dir = std::path::Path::new(workspace_dir).join("source");
     tracing::info!("Running build: {} in {:?}", build_cmd, source_dir);
 
@@ -205,12 +211,44 @@ pub async fn run_build(workspace_dir: &str, build_cmd: &str) -> Result<String, A
     Ok(log)
 }
 
-pub async fn start_app(manager: &AppProcessManager, repo_id: i64, workspace_dir: &str, start_cmd: &str, port: u16, env_vars: &str) -> Result<(), AppError> {
+pub async fn start_app(manager: &AppProcessManager, repo_id: i64, workspace_dir: &str, start_cmd: &str, port: u16, env_vars: &str, docker_opt: Option<&DockerManager>, username: &str, repo_name: &str) -> Result<(), AppError> {
+    if let Some(docker) = docker_opt {
+        // Stop existing if any
+        let _ = docker.exec_stop_app(username, port).await;
+
+        let mut env: Vec<String> = Vec::new();
+        if let Ok(vars) = serde_json::from_str::<HashMap<String, String>>(env_vars) {
+            for (k, v) in vars {
+                env.push(format!("{}={}", k, v));
+            }
+        }
+
+        docker.exec_start_detached(username, repo_name, start_cmd, port, Some(env)).await
+            .map_err(|e| AppError::Internal(format!("Failed to start app in container: {}", e)))?;
+
+        let proc = AppProcess {
+            repo_id,
+            port,
+            status: AppStatus::Running,
+            pid: 0,
+        };
+        manager.register(proc).await;
+
+        // Health check via container
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        match docker.exec_check_status(username, repo_name, port).await {
+            Ok(true) => tracing::info!("App {} is running on port {} in container", repo_id, port),
+            _ => tracing::warn!("App {} started but health check failed", repo_id),
+        }
+
+        return Ok(());
+    }
+
     let source_dir = std::path::Path::new(workspace_dir).join("source");
     tracing::info!("Starting app {} on port {}", repo_id, port);
 
     // Stop existing process if any
-    stop_app(manager, repo_id).await;
+    stop_app(manager, repo_id, docker_opt).await;
 
     let mut cmd = tokio::process::Command::new("sh");
     cmd.arg("-c").arg(start_cmd)
@@ -273,26 +311,30 @@ pub async fn start_app(manager: &AppProcessManager, repo_id: i64, workspace_dir:
     Ok(())
 }
 
-pub async fn stop_app(manager: &AppProcessManager, repo_id: i64) {
+pub async fn stop_app(manager: &AppProcessManager, repo_id: i64, docker: Option<&DockerManager>) {
     if let Some(proc) = manager.get(repo_id).await {
         if proc.status == AppStatus::Running || proc.status == AppStatus::Deploying {
-            tracing::info!("Stopping app {} (pid {})", repo_id, proc.pid);
-            let _ = tokio::process::Command::new("kill")
-                .args([&proc.pid.to_string()])
-                .output().await;
-            // Also kill any remaining processes on that port
-            let _ = tokio::process::Command::new("lsof")
-                .args(["-ti", &format!("tcp:{}", proc.port)])
-                .output().await
-                .and_then(|o| {
-                    if o.status.success() {
-                        let pids = String::from_utf8_lossy(&o.stdout);
-                        for pid in pids.lines() {
-                            let _ = std::process::Command::new("kill").args(["-9", pid]).output();
+            tracing::info!("Stopping app {}", repo_id);
+
+            if let Some(docker) = docker {
+                let _ = docker.exec_stop_app("", proc.port).await;
+            } else {
+                let _ = tokio::process::Command::new("kill")
+                    .args([&proc.pid.to_string()])
+                    .output().await;
+                let _ = tokio::process::Command::new("lsof")
+                    .args(["-ti", &format!("tcp:{}", proc.port)])
+                    .output().await
+                    .and_then(|o| {
+                        if o.status.success() {
+                            let pids = String::from_utf8_lossy(&o.stdout);
+                            for pid in pids.lines() {
+                                let _ = std::process::Command::new("kill").args(["-9", pid]).output();
+                            }
                         }
-                    }
-                    Ok(())
-                });
+                        Ok(())
+                    });
+            }
         }
         manager.update_status(repo_id, AppStatus::Stopped).await;
     }
@@ -303,9 +345,10 @@ pub async fn deploy_app(
     bare_repo_path: &str,
     workspace_dir: &str,
     config: &AppsConfig,
-    _username: &str,
-    _repo_name: &str,
+    username: &str,
+    repo_name: &str,
     repo_id: i64,
+    docker: Option<&DockerManager>,
 ) -> Result<(u16, String), AppError> {
     manager.update_status(repo_id, AppStatus::Deploying).await;
     let mut log = String::new();
@@ -330,7 +373,7 @@ pub async fn deploy_app(
 
     // Build
     if !build_cmd.is_empty() {
-        match run_build(workspace_dir, &build_cmd).await {
+        match run_build(workspace_dir, &build_cmd, docker, username, repo_name).await {
             Ok(build_log) => log.push_str(&build_log),
             Err(e) => {
                 log.push_str(&format!("Build error: {}\n", e));
@@ -344,7 +387,7 @@ pub async fn deploy_app(
     log.push_str(&format!("\nPort: {}\n\n", port));
 
     // Start
-    match start_app(manager, repo_id, workspace_dir, &start_cmd, port, &config.env_vars).await {
+    match start_app(manager, repo_id, workspace_dir, &start_cmd, port, &config.env_vars, docker, username, repo_name).await {
         Ok(()) => {
             log.push_str(&format!("App started on port {}\n", port));
             Ok((port, log))

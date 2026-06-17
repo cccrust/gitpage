@@ -24,3 +24,5 @@ uuid = { version = "1", features = ["v4"] }
 mime_guess = "2"
 toml = "0.8"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+bollard = "0.21"
+futures-util = "0.3"

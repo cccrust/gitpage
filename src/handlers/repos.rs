@@ -169,7 +169,7 @@ pub async fn delete_repo(
     }
 
     // Kill running app if any
-    crate::deploy::stop_app(&state.app_manager, repo_id).await;
+    crate::deploy::stop_app(&state.app_manager, repo_id, state.docker.as_ref()).await;
 
     state.db.delete_repo(repo_id).await?;
 

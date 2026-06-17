@@ -65,6 +65,7 @@ async fn do_deploy(state: &AppState, repo_id: i64, user_id: i64) -> Result<Json<
         &user.username,
         &repo.name,
         repo_id,
+        state.docker.as_ref(),
     ).await {
         Ok((port, log)) => {
             state.db.update_deploy_log(deploy_log.id, "success", &log).await?;
@@ -112,7 +113,7 @@ pub async fn update_apps_config(
     if enabled {
         do_deploy(&state, repo_id, user_id).await
     } else {
-        crate::deploy::stop_app(&state.app_manager, repo_id).await;
+        crate::deploy::stop_app(&state.app_manager, repo_id, state.docker.as_ref()).await;
         state.db.delete_apps_config(repo_id).await?;
         state.app_manager.unregister(repo_id).await;
         Ok(Json(json!({ "success": true })))
@@ -146,7 +147,7 @@ pub async fn delete_apps_handler(
         return Err(AppError::Unauthorized("無權限操作".into()));
     }
 
-    crate::deploy::stop_app(&state.app_manager, repo_id).await;
+    crate::deploy::stop_app(&state.app_manager, repo_id, state.docker.as_ref()).await;
     state.db.delete_apps_config(repo_id).await?;
     state.app_manager.unregister(repo_id).await;
 

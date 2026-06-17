@@ -3,6 +3,7 @@ mod auth;
 mod config;
 mod db;
 mod deploy;
+mod docker;
 mod git;
 mod handlers;
 mod ssh;
@@ -17,12 +18,14 @@ async fn main() {
         .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
         .init();
 
-    let cfg = config::Config::from_file("config.toml");
+    let config_path = std::env::args().nth(1).unwrap_or_else(|| "config.toml".to_string());
+    let cfg = config::Config::from_file(&config_path);
     let cfg = Arc::new(cfg);
 
     std::fs::create_dir_all(&cfg.storage.base_path).expect("Failed to create storage directory");
-    std::fs::create_dir_all("data/apps").expect("Failed to create apps directory");
-    std::fs::create_dir_all("data/staging").expect("Failed to create staging directory");
+    std::fs::create_dir_all(format!("{}/repos", cfg.storage.base_path)).expect("Failed to create repos directory");
+    std::fs::create_dir_all(format!("{}/apps", cfg.storage.base_path)).expect("Failed to create apps directory");
+    std::fs::create_dir_all(format!("{}/staging", cfg.storage.base_path)).expect("Failed to create staging directory");
 
     // Setup SSH: write gitpage-shell handler script to ~/.ssh/
     let staging_root = std::env::current_dir().expect("Failed to get current dir").join("data/staging");
@@ -75,11 +78,28 @@ fi
         cfg.apps.port_range_end,
     );
 
+    // Initialize Docker manager if runtime mode is "docker"
+    let docker = if cfg.runtime.mode == "docker" {
+        match crate::docker::DockerManager::connect(&cfg).await {
+            Ok(m) => {
+                tracing::info!("Docker manager initialized");
+                Some(m)
+            }
+            Err(e) => {
+                tracing::warn!("Failed to initialize Docker manager, falling back to process mode: {}", e);
+                None
+            }
+        }
+    } else {
+        None
+    };
+
     let state = app::AppState {
         db,
         config: cfg.clone(),
         jwt_expires_hours: cfg.jwt.expires_in_hours,
         app_manager,
+        docker,
     };
 
     let app = app::create_app(state);

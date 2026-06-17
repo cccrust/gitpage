@@ -15,6 +15,10 @@ pub struct Config {
     pub upload: UploadConfig,
     #[serde(default)]
     pub apps: AppsConfig,
+    #[serde(default)]
+    pub runtime: RuntimeConfig,
+    #[serde(default)]
+    pub docker: DockerConfig,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -63,6 +67,18 @@ impl Default for SshConfig {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct RuntimeConfig {
+    pub mode: String,
+}
+
+impl Default for RuntimeConfig {
+    fn default() -> Self {
+        RuntimeConfig { mode: "process".to_string() }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
 pub struct CorsConfig {
     pub allowed_origins: Vec<String>,
 }
@@ -90,6 +106,26 @@ impl Default for AppsConfig {
     }
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct DockerConfig {
+    pub base_image: String,
+    pub network: String,
+    pub memory_limit: String,
+    pub cpu_shares: i64,
+}
+
+impl Default for DockerConfig {
+    fn default() -> Self {
+        DockerConfig {
+            base_image: "gitpage-dev-base:latest".to_string(),
+            network: "bridge".to_string(),
+            memory_limit: "1g".to_string(),
+            cpu_shares: 512,
+        }
+    }
+}
+
 impl Config {
     pub fn from_file(path: &str) -> Self {
         let content = fs::read_to_string(path).expect("Failed to read config file");
@@ -97,26 +133,26 @@ impl Config {
     }
 
     pub fn repo_path(&self, username: &str, repo: &str) -> String {
-        format!("{}/{}/{}.git", self.storage.base_path, username, repo)
+        format!("{}/repos/{}/{}.git", self.storage.base_path, username, repo)
     }
 
     pub fn user_repos_path(&self, username: &str) -> String {
-        format!("{}/{}", self.storage.base_path, username)
+        format!("{}/repos/{}", self.storage.base_path, username)
     }
 
     pub fn pages_dir(&self, username: &str, repo: &str) -> String {
-        format!("{}/{}/{}/pages", self.storage.base_path, username, repo)
+        format!("{}/repos/{}/{}/pages", self.storage.base_path, username, repo)
     }
 
     pub fn app_workspace_dir(&self, username: &str, repo: &str) -> String {
-        format!("data/apps/{}/{}", username, repo)
+        format!("{}/apps/{}/{}", self.storage.base_path, username, repo)
     }
 
     pub fn working_tree_path(&self, username: &str, repo: &str) -> String {
-        format!("{}/{}/{}", self.storage.base_path, username, repo)
+        format!("{}/{}", self.storage.base_path, username)
     }
 
     pub fn staging_path(&self, username: &str, repo: &str) -> String {
-        format!("data/staging/{}/{}", username, repo)
+        format!("{}/staging/{}/{}", self.storage.base_path, username, repo)
     }
 }
