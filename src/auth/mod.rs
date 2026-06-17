@@ -1,10 +1,15 @@
+use std::sync::OnceLock;
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
 use chrono::{Duration, Utc};
 
 use crate::db::models::UserPublic;
 
-pub const JWT_SECRET: &str = "gitpage-dev-secret-change-in-production";
+pub static JWT_SECRET: OnceLock<String> = OnceLock::new();
+
+pub fn init_jwt_secret(secret: String) {
+    JWT_SECRET.set(secret).ok();
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Claims {
@@ -14,7 +19,8 @@ pub struct Claims {
     pub iat: usize,
 }
 
-pub fn create_token(user: &UserPublic, secret: &str, expires_in_hours: u64) -> Result<String, jsonwebtoken::errors::Error> {
+pub fn create_token(user: &UserPublic, expires_in_hours: u64) -> Result<String, jsonwebtoken::errors::Error> {
+    let secret = JWT_SECRET.get().expect("JWT_SECRET not initialized");
     let now = Utc::now();
     let exp = now + Duration::hours(expires_in_hours as i64);
     let claims = Claims {
@@ -26,7 +32,8 @@ pub fn create_token(user: &UserPublic, secret: &str, expires_in_hours: u64) -> R
     encode(&Header::default(), &claims, &EncodingKey::from_secret(secret.as_bytes()))
 }
 
-pub fn verify_token(token: &str, secret: &str) -> Result<Claims, jsonwebtoken::errors::Error> {
+pub fn verify_token(token: &str) -> Result<Claims, jsonwebtoken::errors::Error> {
+    let secret = JWT_SECRET.get().expect("JWT_SECRET not initialized");
     let token_data = decode::<Claims>(
         token,
         &DecodingKey::from_secret(secret.as_bytes()),

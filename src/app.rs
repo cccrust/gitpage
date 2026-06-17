@@ -17,13 +17,10 @@ use crate::db::Database;
 use crate::deploy::AppProcessManager;
 use crate::handlers;
 
-const JWT_SECRET: &str = "gitpage-dev-secret-change-in-production";
-
 #[derive(Clone)]
 pub struct AppState {
     pub db: Database,
     pub config: Arc<Config>,
-    pub jwt_secret: String,
     pub jwt_expires_hours: u64,
     pub app_manager: AppProcessManager,
 }
@@ -50,7 +47,7 @@ async fn auth_middleware(
         // Try to extract auth if available (for user context on read-only calls)
         if let Some(header_value) = req.headers().get(header::AUTHORIZATION).and_then(|v| v.to_str().ok()) {
             if let Some(token) = header_value.strip_prefix("Bearer ") {
-                if let Ok(claims) = auth::verify_token(token, JWT_SECRET) {
+                if let Ok(claims) = auth::verify_token(token) {
                     let mut req = req;
                     req.extensions_mut().insert(claims.sub);
                     req.extensions_mut().insert(claims.username.clone());
@@ -68,7 +65,7 @@ async fn auth_middleware(
 
     if let Some(header_value) = auth_header {
         if let Some(token) = header_value.strip_prefix("Bearer ") {
-            if let Ok(claims) = auth::verify_token(token, JWT_SECRET) {
+            if let Ok(claims) = auth::verify_token(token) {
                 let mut req = req;
                 req.extensions_mut().insert(claims.sub);
                 req.extensions_mut().insert(claims.username.clone());
@@ -80,7 +77,21 @@ async fn auth_middleware(
     Err((StatusCode::UNAUTHORIZED, "需要登入".to_string()))
 }
 
+fn build_cors_layer(cfg: &crate::config::CorsConfig) -> CorsLayer {
+    if cfg.allowed_origins.contains(&"*".to_string()) {
+        return CorsLayer::permissive();
+    }
+    let origins: Vec<_> = cfg.allowed_origins.iter()
+        .filter_map(|o| o.parse::<axum::http::HeaderValue>().ok())
+        .collect();
+    CorsLayer::new()
+        .allow_origin(origins)
+        .allow_methods([axum::http::Method::GET, axum::http::Method::POST, axum::http::Method::PUT, axum::http::Method::DELETE, axum::http::Method::OPTIONS])
+        .allow_headers([axum::http::header::CONTENT_TYPE, axum::http::header::AUTHORIZATION])
+}
+
 pub fn create_app(state: AppState) -> Router {
+    let cors = build_cors_layer(&state.config.cors);
     Router::new()
         .route("/api/auth/register", post(handlers::auth::register))
         .route("/api/auth/login", post(handlers::auth::login))
@@ -122,7 +133,7 @@ pub fn create_app(state: AppState) -> Router {
 
         .fallback(fallback_handler)
         .layer(middleware::from_fn(auth_middleware))
-        .layer(CorsLayer::permissive())
+        .layer(cors)
         .with_state(state)
 }
 

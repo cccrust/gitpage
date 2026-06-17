@@ -1,151 +1,98 @@
 # Gitpage — Agent Context
 
-## Project Overview
-Self-hosted Git platform with static Pages hosting, App hosting (like Vercel), Dropbox-style file manager, deploy logs, and SSH shell access.
+Self-hosted Git platform with Pages / App hosting, file manager, deploy logs, SSH shell. Like minimal GitHub/GitLab.
 
-- **Backend**: Rust (Axum + libgit2 + rusqlite), no ORM, no async runtime for git2
-- **Frontend**: React 19 + TypeScript + Vite, no state management library
-- **Auth**: JWT (jsonwebtoken crate) + argon2 password hashing
-- **Database**: SQLite via rusqlite (single file: `data/gitpage.db`)
-- **Git**: libgit2 (git2 crate), bare repos at `data/repos/{user}/{repo}.git`
-- **Template engine**: None — backend serves JSON, frontend SPA at `/`
+## Stack
 
-## Build & Run
+- **Backend**: Rust (Axum + libgit2 + rusqlite) — no ORM, no async git2
+- **Frontend**: React 19 + TypeScript + Vite — no state library
+- **Auth**: JWT (jsonwebtoken crate, global `OnceLock`) + argon2
+- **DB**: SQLite via rusqlite (`data/gitpage.db`), WAL mode, `tokio::sync::Mutex`
+- **Git**: libgit2 for reading tree/blob/commit/log; system `git http-backend` subprocess for push/pull/clone
+
+## Commands
+
 ```bash
-# Backend
-cargo build
-cargo run
-
-# Frontend (separate terminal, for dev)
-cd frontend && npm run dev
-
-# Frontend build (for production)
-cd frontend && npm run build
-
-# Test
-./test.sh
-./seed.sh      # Creates demo users + repos
+cargo build                     # Backend
+cargo run                       # Dev server on :8080
+cd frontend && npm run dev      # Frontend HMR on :5173 (proxies /api, /git, /pages to :8080)
+cd frontend && npm run build    # tsc -b && vite build
+./run.sh                        # Production: build frontend + backend release, start
+./test.sh                       # Integration test (deletes data/, starts fresh)
+./seed.sh                       # Demo users (alice/alice123, bob/bob123) + repos
 ```
 
-## Key Backend Architecture
+## Config (`config.toml`)
 
-### Routes (`src/app.rs`)
-- **Auth**: `POST /api/auth/register`, `POST /api/auth/login`, `GET /api/auth/me`, `PUT /api/auth/password`
-- **Repos**: `GET/POST /api/repos`, `GET/DELETE /api/repos/:id`, `PUT /api/repos/:id`
-- **Public**: `GET /api/users/:username/repos`, `GET /api/users/:username/profile` (GET + PUT)
-- **Content**: `GET /api/:username/:repo_name/tree`, `/blob`, `/readme`, `/commits/:branch`
-- **Pages**: `GET/PUT /api/pages/:repo_id`, `POST /api/pages/:repo_id/deploy`
-- **Apps**: `GET/PUT/DELETE /api/apps/:repo_id`, `POST /api/apps/:repo_id/deploy`, `GET /api/apps/:repo_id/deploys[/:deploy_id]`
-- **Files (staging)**: `GET /api/repos/:repo_id/tree|raw`, `PUT/DELETE /api/repos/:repo_id/files`, `POST mkdir|move|commit`
-- **SSH Keys**: `GET/POST /api/repos/:repo_id/ssh-keys`, `DELETE /api/repos/:repo_id/ssh-keys/:key_id`
-- **Search**: `GET /api/repos/search?q=&page=&page_size=`
+Sections: `[server]`, `[database]`, `[storage]`, `[jwt]`, `[ssh]`, `[cors]`, `[upload]`, `[apps]`.
 
-### Fallback handler (order matters)
-1. `/git/{user}/{repo}/{*path}` — Git HTTP Smart Protocol (push/pull/clone)
-2. `/pages/{user}/{repo}/{*path}` — Static Pages hosting
-3. `/apps/{repo_id}/{*path}` — Reverse proxy to running app processes
-4. `/{path}` — Serve `static/` files, then SPA fallback (`index.html`)
+- JWT secret: config value, overridable via `JWT_SECRET` env var
+- SSH disabled by setting `[ssh] enabled = false`
+- CORS: `allowed_origins = ["*"]` or specific origins
+- Upload limit: `max_file_size` (default 10MB)
+- App port range: `port_range_start` / `port_range_end`
 
-### Database (`src/db/mod.rs`)
-- Tables: `users`, `repositories`, `pages_config`, `apps_config`, `deploy_logs`, `ssh_keys`
-- Migrations run automatically on startup
-- All DB methods are async (wrapped in `tokio::sync::Mutex`)
+## Route Fallback (order matters in `src/app.rs`)
 
-### Error Handling (`src/utils/errors.rs`)
-- Custom `AppError` enum with `BadRequest`, `Unauthorized`, `NotFound`, `Conflict`, `Internal`
-- Error messages are in Chinese
-- `AppError` implements `IntoResponse` for Axum
+1. `/git/{user}/{repo}/*` — git http-backend (push/pull)
+2. `/pages/{user}/{repo}/*` — static pages hosting
+3. `/app/{user}/{repo}/*` — reverse proxy to running app
+4. `/*` — static files (frontend/dist/ → static/) → SPA fallback
 
-### Key Modules
-| File | Purpose |
-|------|---------|
-| `src/auth/mod.rs` | JWT create/verify |
-| `src/config.rs` | Config structs from `config.toml` |
-| `src/deploy.rs` | App build/start lifecycle (subprocess) |
-| `src/ssh.rs` | `regenerate_authorized_keys()` — writes `~/.ssh/authorized_keys` + `~/.ssh/gitpage-shell` |
-| `src/git/mod.rs` | Low-level git2 operations (clone, fetch, log, read tree) |
-| `src/app.rs` | Route setup + `fallback_handler` (Git smart, Pages proxy, App proxy, SPA) |
-| `src/handlers/` | One file per domain (auth, repos, apps, pages, files, ssh_keys, content, git_smart) |
+## Key Backend Modules
 
-### Important Signatures
-- `deploy_app(repo_path, workspace, apps_config) -> Result<(u16, String), AppError>` — returns (port, log)
-- `commit_staging(username, repo, message) -> Result<(), AppError>` — builds git tree from staging dir
-- `regenerate_authorized_keys(state: &AppState) -> Result<(), AppError>` — regenerates all SSH access
-
-## Frontend Architecture
-
-### Routes (React Router)
-| Path | Page |
+| File | Role |
 |------|------|
-| `/` | Dashboard (repo list + search) |
-| `/login`, `/register` | Auth |
-| `/new` | Create repo |
-| `/repo/:id` | Repo page (overview, clone URL, commits) |
-| `/repo/:id/files` | File explorer |
-| `/repo/:id/files/edit?path=` | File editor |
-| `/repo/:id/pages` | Pages settings |
-| `/repo/:id/app` | App settings |
-| `/repo/:id/deploys[/:deployId]` | Deploy logs |
-| `/repo/:id/settings` | Repo settings |
-| `/repo/:id/ssh` | SSH key management |
-| `/u/:username` | User profile |
-| `/settings` | User settings (profile + password) |
+| `src/auth/mod.rs` | JWT create/verify, `JWT_SECRET` global `OnceLock` |
+| `src/config.rs` | Config structs from `config.toml` |
+| `src/deploy.rs` | App subprocess lifecycle (`AppProcessManager`) |
+| `src/ssh.rs` | `regenerate_authorized_keys()` writes `~/.ssh/authorized_keys` + `~/.ssh/gitpage-shell` |
+| `src/git/mod.rs` | libgit2 tree/blob/log + git http-backend spawn |
+| `src/app.rs` | Routes + fallback handler + auto-deploy on git push |
+| `src/handlers/` | One file per domain |
+| `src/db/mod.rs` | All DB operations, migrations at startup |
 
-### API Module (`src/api.ts`)
-- `request<T>(method, path, body)` — generic fetch wrapper, injects JWT from `localStorage`
-- Exports typed functions: `login`, `register`, `listRepos`, `getRepo`, `createRepo`, `deleteRepo`, `listTree`, `listCommits`, etc.
-- All user-facing strings are in Chinese
+## Files: Staging, Not Direct Git
 
-### Components
-- `Layout.tsx` — Top nav + bottom nav (mobile) + container
-- `MarkdownView.tsx` — Renders markdown HTML
-- `Spinner.tsx` — Unified loading indicator
-- `Pagination.tsx` — Prev/Next pagination
+Staging area at `data/staging/{user}/{repo}/`. `POST /api/repos/:repo_id/commit` builds a git tree + commit from staged files. Staging dirs created/deleted alongside repos.
 
-## Key Design Decisions
+## Frontend Notes
 
-### v0.6 — Direct Subprocess (no Docker)
-App processes are spawned directly. `AppProcessManager` (`HashMap<RepoId, ProcessHandle>`) tracks running apps. Processes are lost on server restart (DB config persists).
-
-### v0.7 — Dropbox-style File Manager
-Files in `data/staging/{username}/{repo}/`. Staging is the working area; `commit_staging()` builds a git commit from staged files. Created/deleted alongside repos.
-
-### v0.8 — Deploy Logs
-`deploy_logs` table stores `(id, repo_id, status, started_at, finished_at, log_output)`. `deploy_app` returns `(port, log_str)`, callers persist the log.
-
-### v0.9 — SSH Shell via OpenSSH
-Each SSH key is bound to one repo. System OpenSSH handles connections; `~/.ssh/authorized_keys` has `command="/path/to/gitpage-shell"` restrictions. The `gitpage-shell` script `cd`s to the repo's staging dir. `regenerate_authorized_keys()` rewrites the entire file.
-
-### v0.10 — Chinese Error Messages
-All error messages unified to Chinese. Backend: `AppError` display + all handlers. Frontend: all catch-block messages in 16 pages.
-
-### v0.11 — Search & UI Polish
-- Search supports pagination (`page`/`page_size`)
-- Search results include `username` (JOIN with users table)
-- Clone URL shown on repo page
-- `Spinner` + `Pagination` components
-- Uniform loading states across all pages
-
-## Version Roadmap
-```
-v0.1–0.9: Core features (complete)
-v0.10:   Chinese errors + user settings (complete)
-v0.11:   Search pagination + UI polish (complete)
-v0.12:   Repo management + security config
-v0.13:   README + API docs
-v1.0:    Stable release (no Docker)
-v1.1+:   Docker containerization
-```
-
-## Critical Context
-- `data/` directory: `repos/` (bare git), `staging/` (working dirs), `apps/` (app workspaces), `db` and config live here
-- `~/.ssh/authorized_keys` + `~/.ssh/gitpage-shell` are auto-managed (SSH)
-- JWT secret in `config.toml` or env var `JWT_SECRET`
-- `run.sh` starts both backend and frontend build
-- Hot reload: `cargo run` for backend, `cd frontend && npm run dev` for frontend
+- All user-facing strings in Chinese
+- `api.ts` has `request<T>(method, path, body)` — injects JWT from `localStorage`
+- Routes defined in `App.tsx`, pages in `frontend/src/pages/`
+- Components: `Layout.tsx` (top + bottom nav), `MarkdownView.tsx`, `Spinner.tsx`, `Pagination.tsx`
 
 ## Testing
+
 ```bash
-./test.sh    # Current test script
+./test.sh    # bash + set -x, no test framework, deletes data/ and starts fresh
 ```
-No formal test framework. Tests use bash + `set -x`.
+Test removes `data/` and kills existing `gitpage` processes. Must not run concurrently with seed.sh.
+
+## Project Structure
+
+```
+src/main.rs            — Entry: config, DB, SSH script, app startup
+src/app.rs             — Router + fallback handler (Git/Pages/App proxy)
+data/
+├── gitpage.db         — SQLite
+├── repos/{u}/{r}.git  — Bare git repos
+├── staging/{u}/{r}/   — File manager working tree
+└── apps/{u}/{r}/      — App build workspace
+_doc/                  — Version docs + API reference (api.md)
+migrations/init.sql    — Stale; actual migrations run from src/db/mod.rs
+config.toml            — All configuration
+run.sh                 — Prod start: builds frontend + backend release
+seed.sh                — Demo data
+test.sh                — Integration test
+frontend/vite.config.ts— Dev proxy: /api, /git, /pages → :8080
+```
+
+## Gotchas
+
+- `test.sh` deletes `data/` at start — don't run with active data
+- `seed.sh` starts its own server if none running (also deletes `data/` via `rm -rf data`)
+- App processes are lost on server restart (DB config persists, subprocesses don't)
+- SSH: `~/.ssh/authorized_keys` and `~/.ssh/gitpage-shell` are auto-managed — don't edit manually
+- libgit2 errors are wrapped as `AppError::Internal` in Chinese

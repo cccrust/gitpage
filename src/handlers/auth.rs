@@ -39,7 +39,7 @@ pub async fn register(
         })?;
 
     let user_public: UserPublic = user.into();
-    let token = create_token(&user_public, &state.jwt_secret, state.jwt_expires_hours)
+    let token = create_token(&user_public, state.jwt_expires_hours)
         .map_err(|e| AppError::Internal(format!("JWT error: {}", e)))?;
 
     Ok((
@@ -66,7 +66,7 @@ pub async fn login(
         .map_err(|_| AppError::Unauthorized("使用者名稱或密碼錯誤".into()))?;
 
     let user_public: UserPublic = user.into();
-    let token = create_token(&user_public, &state.jwt_secret, state.jwt_expires_hours)
+    let token = create_token(&user_public, state.jwt_expires_hours)
         .map_err(|e| AppError::Internal(format!("JWT error: {}", e)))?;
 
     Ok(Json(json!({

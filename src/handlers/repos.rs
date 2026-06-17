@@ -100,6 +100,19 @@ pub async fn delete_repo(
         std::fs::remove_dir_all(&staging_path)?;
     }
 
+    let pages_dir = state.config.pages_dir(&user.username, &repo.name);
+    if std::path::Path::new(&pages_dir).exists() {
+        std::fs::remove_dir_all(&pages_dir)?;
+    }
+
+    let app_workspace = state.config.app_workspace_dir(&user.username, &repo.name);
+    if std::path::Path::new(&app_workspace).exists() {
+        std::fs::remove_dir_all(&app_workspace)?;
+    }
+
+    // Kill running app if any
+    crate::deploy::stop_app(&state.app_manager, repo_id).await;
+
     state.db.delete_repo(repo_id).await?;
 
     Ok(Json(json!({ "deleted": true })))
@@ -143,6 +156,7 @@ pub async fn search_repos(
 
 #[derive(Deserialize)]
 pub struct UpdateRepoRequest {
+    pub name: Option<String>,
     pub description: Option<String>,
     pub is_private: Option<bool>,
 }
@@ -160,10 +174,31 @@ pub async fn update_repo_handler(
         return Err(AppError::Unauthorized("無權限修改".into()));
     }
 
+    let user = state.db.find_user_by_id(user_id).await?
+        .ok_or_else(|| AppError::NotFound("使用者不存在".into()))?;
+
     let description = req.description.unwrap_or(repo.description);
     let is_private = req.is_private.unwrap_or(repo.is_private);
 
-    state.db.update_repo(repo_id, &description, is_private).await?;
+    if let Some(ref new_name) = req.name {
+        if !new_name.is_empty() && *new_name != repo.name {
+            // Rename on disk: bare repo + staging
+            let old_repo_path = state.config.repo_path(&user.username, &repo.name);
+            let new_repo_path = state.config.repo_path(&user.username, new_name);
+            let old_staging = state.config.staging_path(&user.username, &repo.name);
+            let new_staging = state.config.staging_path(&user.username, new_name);
+
+            if std::path::Path::new(&old_repo_path).exists() {
+                std::fs::rename(&old_repo_path, &new_repo_path)?;
+            }
+            if std::path::Path::new(&old_staging).exists() {
+                std::fs::rename(&old_staging, &new_staging)?;
+            }
+        }
+    }
+
+    let name = req.name.as_deref().unwrap_or(&repo.name);
+    state.db.update_repo(repo_id, name, &description, is_private).await?;
 
     Ok(Json(json!({ "success": true })))
 }

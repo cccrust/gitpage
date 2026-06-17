@@ -200,7 +200,18 @@ cd - > /dev/null
 api PUT "/api/pages/5" "$BOB" \
   '{"branch":"main","source_dir":"/","enabled":true}' > /dev/null
 
-echo "  bob token: $BOB"
+# ── SSH key demo ──
+echo ""
+echo "--- SSH key demo ---"
+SSH_KEY_FILE="/tmp/gpseed-id_ed25519"
+rm -f "$SSH_KEY_FILE" "$SSH_KEY_FILE.pub"
+ssh-keygen -t ed25519 -N "" -f "$SSH_KEY_FILE" -q
+PUB_KEY=$(cat "$SSH_KEY_FILE.pub")
+TOKEN=$ALICE
+api POST "/api/repos/1/ssh-keys" "$ALICE" \
+  "{\"name\":\"demo-laptop\",\"public_key\":\"$PUB_KEY\"}" > /dev/null
+echo "  Added demo SSH key to alice/blog"
+rm -f "$SSH_KEY_FILE" "$SSH_KEY_FILE.pub"
 
 echo ""
 echo "=== Seed complete ==="
@@ -210,7 +221,7 @@ echo "  alice / alice123"
 echo "  bob   / bob123"
 echo ""
 echo "Repos:"
-echo "  alice/blog          (public)"
+echo "  alice/blog          (public, SSH key added)"
 echo "  alice/dotfiles      (public)"
 echo "  alice/secret-project (private)"
 echo "  bob/my-notes        (public)"

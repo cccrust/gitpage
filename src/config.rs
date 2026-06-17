@@ -8,6 +8,12 @@ pub struct Config {
     pub storage: StorageConfig,
     pub jwt: JwtConfig,
     #[serde(default)]
+    pub ssh: SshConfig,
+    #[serde(default)]
+    pub cors: CorsConfig,
+    #[serde(default)]
+    pub upload: UploadConfig,
+    #[serde(default)]
     pub apps: AppsConfig,
 }
 
@@ -33,10 +39,49 @@ pub struct JwtConfig {
     pub expires_in_hours: u64,
 }
 
+impl JwtConfig {
+    pub fn effective_secret(&self) -> String {
+        std::env::var("JWT_SECRET").unwrap_or_else(|_| self.secret.clone())
+    }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct AppsConfig {
     pub port_range_start: u16,
     pub port_range_end: u16,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct SshConfig {
+    pub enabled: bool,
+}
+
+impl Default for SshConfig {
+    fn default() -> Self {
+        SshConfig { enabled: true }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CorsConfig {
+    pub allowed_origins: Vec<String>,
+}
+
+impl Default for CorsConfig {
+    fn default() -> Self {
+        CorsConfig { allowed_origins: vec!["*".to_string()] }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct UploadConfig {
+    pub max_file_size: usize,
+}
+
+impl Default for UploadConfig {
+    fn default() -> Self {
+        UploadConfig { max_file_size: 10 * 1024 * 1024 }
+    }
 }
 
 impl Default for AppsConfig {

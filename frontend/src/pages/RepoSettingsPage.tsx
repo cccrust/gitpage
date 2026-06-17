@@ -1,6 +1,6 @@
 import { useEffect, useState, FormEvent } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { getRepo, deleteRepo, isLoggedIn, clearToken } from '../api'
+import { getRepo, deleteRepo } from '../api'
 import type { Repo } from '../api'
 import Spinner from '../components/Spinner'
 
@@ -8,6 +8,7 @@ export default function RepoSettingsPage() {
   const { id } = useParams<{ id: string }>()
   const nav = useNavigate()
   const [repo, setRepo] = useState<Repo | null>(null)
+  const [name, setName] = useState('')
   const [desc, setDesc] = useState('')
   const [isPrivate, setIsPrivate] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -25,6 +26,7 @@ export default function RepoSettingsPage() {
     getRepo(numId)
       .then(r => {
         setRepo(r.repo)
+        setName(r.repo.name)
         setDesc(r.repo.description)
         setIsPrivate(r.repo.is_private)
       })
@@ -45,11 +47,12 @@ export default function RepoSettingsPage() {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${localStorage.getItem('token')}`,
         },
-        body: JSON.stringify({ description: desc, is_private: isPrivate }),
+        body: JSON.stringify({ name, description: desc, is_private: isPrivate }),
       })
       const d = await res.json()
       if (!res.ok) throw new Error(d.error || '儲存失敗')
-      setMsg('Saved')
+      setMsg('儲存成功')
+      if (name !== repo?.name) nav(`/repo/${id}/settings`)
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : '儲存失敗')
     }
@@ -81,6 +84,9 @@ export default function RepoSettingsPage() {
       <h2>Repository Settings</h2>
 
       <form onSubmit={save}>
+        <label>Name</label>
+        <input type="text" value={name} onChange={e => setName(e.target.value)} />
+
         <label>Description</label>
         <input type="text" value={desc} onChange={e => setDesc(e.target.value)} />
 
@@ -93,7 +99,7 @@ export default function RepoSettingsPage() {
         {err && <p className="msg-err">{err}</p>}
 
         <button className="btn" type="submit" disabled={saving}>
-          {saving ? 'Saving...' : 'Save'}
+          {saving ? '儲存中...' : '儲存設定'}
         </button>
       </form>
 
@@ -106,7 +112,7 @@ export default function RepoSettingsPage() {
           onClick={handleDelete}
           disabled={deleting || confirmDelete !== repo.name}
         >
-          {deleting ? 'Deleting...' : 'Delete this repository'}
+          {deleting ? '刪除中...' : '刪除此倉庫'}
         </button>
       </div>
     </div>

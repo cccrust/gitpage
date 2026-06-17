@@ -11,3 +11,16 @@ base_path = "data/repos"
 [jwt]
 secret = "gitpage-dev-secret-change-in-production"
 expires_in_hours = 24
+
+[ssh]
+enabled = true
+
+[cors]
+allowed_origins = ["*"]
+
+[upload]
+max_file_size = 10485760
+
+[apps]
+port_range_start = 4000
+port_range_end = 65535

@@ -135,6 +135,11 @@ pub async fn write_file(
     Query(query): Query<WriteQuery>,
     body: axum::body::Bytes,
 ) -> Result<Json<Value>, AppError> {
+    let max_size = state.config.upload.max_file_size;
+    if body.len() > max_size {
+        return Err(AppError::BadRequest(format!("檔案大小超過限制 (最大 {} bytes)", max_size)));
+    }
+
     let repo = state.db.find_repo_by_id(repo_id).await?
         .ok_or_else(|| AppError::NotFound("倉庫不存在".into()))?;
 

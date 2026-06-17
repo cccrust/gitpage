@@ -323,11 +323,11 @@ impl Database {
         Ok((items, total))
     }
 
-    pub async fn update_repo(&self, id: i64, description: &str, is_private: bool) -> Result<(), rusqlite::Error> {
+    pub async fn update_repo(&self, id: i64, name: &str, description: &str, is_private: bool) -> Result<(), rusqlite::Error> {
         let conn = self.conn.lock().await;
         conn.execute(
-            "UPDATE repositories SET description = ?1, is_private = ?2, updated_at = CURRENT_TIMESTAMP WHERE id = ?3",
-            params![description, is_private as i32, id],
+            "UPDATE repositories SET name = ?1, description = ?2, is_private = ?3, updated_at = CURRENT_TIMESTAMP WHERE id = ?4",
+            params![name, description, is_private as i32, id],
         )?;
         Ok(())
     }
