@@ -1,4 +1,4 @@
-import { useEffect, useState, FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { getRepo, deleteRepo } from '../api'
 import type { Repo } from '../api'
@@ -82,6 +82,11 @@ export default function RepoSettingsPage() {
         <Link to="/">~</Link> / <Link to={`/repo/${repo.id}`}>{repo.name}</Link> / Settings
       </div>
       <h2>Repository Settings</h2>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+        <Link to={`/repo/${repo.id}/collaborators`} className="btn-sm">協作者</Link>
+        <Link to={`/repo/${repo.id}/secrets`} className="btn-sm">Secrets</Link>
+        <Link to={`/repo/${repo.id}/branch-protection`} className="btn-sm">Branch Protection</Link>
+      </div>
 
       <form onSubmit={save}>
         <label>Name</label>

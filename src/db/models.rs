@@ -42,6 +42,7 @@ pub struct Repository {
     pub default_branch: String,
     pub owner_type: String,
     pub org_id: Option<i64>,
+    pub forked_from: Option<i64>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -188,4 +189,120 @@ pub struct EnabledAppWithOwner {
     pub config: AppsConfig,
     pub username: String,
     pub repo_name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Issue {
+    pub id: i64,
+    pub repo_id: i64,
+    pub number: i64,
+    pub title: String,
+    pub body: Option<String>,
+    pub state: String,
+    pub author_id: i64,
+    pub assignee_id: Option<i64>,
+    pub created_at: String,
+    pub updated_at: String,
+    pub closed_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IssueWithAuthor {
+    pub issue: Issue,
+    pub author_username: String,
+    pub labels: Vec<IssueLabel>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IssueLabel {
+    pub id: i64,
+    pub repo_id: i64,
+    pub name: String,
+    pub color: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IssueComment {
+    pub id: i64,
+    pub issue_id: i64,
+    pub author_id: i64,
+    pub author_username: String,
+    pub body: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PullRequest {
+    pub id: i64,
+    pub repo_id: i64,
+    pub number: i64,
+    pub title: String,
+    pub body: Option<String>,
+    pub state: String,
+    pub author_id: i64,
+    pub head_repo_id: i64,
+    pub head_ref: String,
+    pub base_ref: String,
+    pub merge_commit_sha: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+    pub closed_at: Option<String>,
+    pub merged_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PullRequestWithAuthor {
+    pub pr: PullRequest,
+    pub author_username: String,
+    pub head_repo_name: String,
+    pub head_repo_owner: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiffEntry {
+    pub status: String,
+    pub old_path: Option<String>,
+    pub new_path: Option<String>,
+}
+
+// ── v2.1 Settings models ──
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AccessToken {
+    pub id: i64,
+    pub user_id: i64,
+    pub name: String,
+    pub token_prefix: String,
+    pub scopes: String,
+    pub last_used_at: Option<String>,
+    pub created_at: String,
+    pub expires_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RepoCollaborator {
+    pub repo_id: i64,
+    pub user_id: i64,
+    pub permission: String,
+    pub username: String,
+    pub avatar_url: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RepoSecret {
+    pub id: i64,
+    pub repo_id: i64,
+    pub name: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BranchProtection {
+    pub id: i64,
+    pub repo_id: i64,
+    pub pattern: String,
+    pub require_pr: bool,
+    pub require_approvals: i64,
+    pub dismiss_stale_reviews: bool,
 }

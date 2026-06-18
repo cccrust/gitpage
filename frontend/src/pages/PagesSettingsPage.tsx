@@ -1,4 +1,4 @@
-import { useEffect, useState, FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { getRepo, getPagesConfig, updatePagesConfig, deployPages, type Repo, type PagesConfig } from '../api'
 import Spinner from '../components/Spinner'
@@ -7,7 +7,7 @@ export default function PagesSettingsPage() {
   const { id } = useParams<{ id: string }>()
   const [repo, setRepo] = useState<Repo | null>(null)
   const [username, setUsername] = useState('')
-  const [cfg, setCfg] = useState<PagesConfig | null>(null)
+  const [_cfg, setCfg] = useState<PagesConfig | null>(null)
   const [branch, setBranch] = useState('main')
   const [sourceDir, setSourceDir] = useState('/')
   const [customDomain, setCustomDomain] = useState('')

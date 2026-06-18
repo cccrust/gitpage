@@ -6,9 +6,25 @@ use chrono::{Duration, Utc};
 use crate::db::models::UserPublic;
 
 pub static JWT_SECRET: OnceLock<String> = OnceLock::new();
+pub static ENCRYPTION_KEY: OnceLock<[u8; 32]> = OnceLock::new();
 
 pub fn init_jwt_secret(secret: String) {
     JWT_SECRET.set(secret).ok();
+}
+
+pub fn init_encryption_key(key: &str) {
+    if key.is_empty() {
+        return;
+    }
+    use sha2::{Sha256, Digest};
+    let hash = Sha256::digest(key.as_bytes());
+    let mut arr = [0u8; 32];
+    arr.copy_from_slice(&hash);
+    ENCRYPTION_KEY.set(arr).ok();
+}
+
+pub fn get_encryption_key() -> [u8; 32] {
+    *ENCRYPTION_KEY.get().expect("ENCRYPTION_KEY not initialized")
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

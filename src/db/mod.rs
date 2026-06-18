@@ -3,7 +3,7 @@ pub mod models;
 use rusqlite::{Connection, params};
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use models::{User, Repository, PagesConfig, AppsConfig, DeployLog, SshKey, SearchResultItem, Organization, OrganizationMember, OrganizationWithRole, OrgRepoResult, EnabledAppWithOwner};
+use models::{User, Repository, PagesConfig, AppsConfig, DeployLog, SshKey, SearchResultItem, Organization, OrganizationMember, OrganizationWithRole, OrgRepoResult, EnabledAppWithOwner, Issue, IssueWithAuthor, IssueLabel, IssueComment, PullRequest, PullRequestWithAuthor, AccessToken, RepoCollaborator, RepoSecret, BranchProtection};
 
 #[derive(Clone)]
 pub struct Database {
@@ -155,6 +155,113 @@ impl Database {
             "ALTER TABLE apps_config ADD COLUMN port INTEGER DEFAULT 0;"
         ).ok();
 
+        // v2.0 tables
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS issues (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                repo_id     INTEGER NOT NULL REFERENCES repositories(id),
+                number      INTEGER NOT NULL,
+                title       TEXT NOT NULL,
+                body        TEXT DEFAULT '',
+                state       TEXT NOT NULL DEFAULT 'open',
+                author_id   INTEGER NOT NULL REFERENCES users(id),
+                assignee_id INTEGER REFERENCES users(id),
+                created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+                closed_at   DATETIME,
+                UNIQUE(repo_id, number)
+            );
+
+            CREATE TABLE IF NOT EXISTS issue_labels (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                repo_id     INTEGER NOT NULL REFERENCES repositories(id),
+                name        TEXT NOT NULL,
+                color       TEXT NOT NULL DEFAULT '0366d6',
+                UNIQUE(repo_id, name)
+            );
+
+            CREATE TABLE IF NOT EXISTS issue_label_map (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                issue_id    INTEGER NOT NULL REFERENCES issues(id),
+                label_id    INTEGER NOT NULL REFERENCES issue_labels(id),
+                UNIQUE(issue_id, label_id)
+            );
+
+            CREATE TABLE IF NOT EXISTS issue_comments (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                issue_id    INTEGER NOT NULL REFERENCES issues(id),
+                author_id   INTEGER NOT NULL REFERENCES users(id),
+                body        TEXT NOT NULL,
+                created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS pull_requests (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                repo_id         INTEGER NOT NULL REFERENCES repositories(id),
+                number          INTEGER NOT NULL,
+                title           TEXT NOT NULL,
+                body            TEXT DEFAULT '',
+                state           TEXT NOT NULL DEFAULT 'open',
+                author_id       INTEGER NOT NULL REFERENCES users(id),
+                head_repo_id    INTEGER NOT NULL REFERENCES repositories(id),
+                head_ref        TEXT NOT NULL,
+                base_ref        TEXT NOT NULL,
+                merge_commit_sha TEXT,
+                created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+                closed_at       DATETIME,
+                merged_at       DATETIME,
+                UNIQUE(repo_id, number)
+            );"
+        )?;
+
+        // Add forked_from column to repositories
+        conn.execute_batch(
+            "ALTER TABLE repositories ADD COLUMN forked_from INTEGER REFERENCES repositories(id);"
+        ).ok();
+
+        // v2.1 tables
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS access_tokens (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                name        TEXT NOT NULL,
+                token_prefix TEXT NOT NULL DEFAULT '',
+                token_hash  TEXT NOT NULL,
+                scopes      TEXT NOT NULL DEFAULT 'repo',
+                last_used_at DATETIME,
+                created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+                expires_at  DATETIME
+            );
+
+            CREATE TABLE IF NOT EXISTS repo_collaborators (
+                repo_id     INTEGER NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
+                user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                permission  TEXT NOT NULL DEFAULT 'write',
+                PRIMARY KEY (repo_id, user_id)
+            );
+
+            CREATE TABLE IF NOT EXISTS repo_secrets (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                repo_id         INTEGER NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
+                name            TEXT NOT NULL,
+                encrypted_value BLOB NOT NULL,
+                created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(repo_id, name)
+            );
+
+            CREATE TABLE IF NOT EXISTS branch_protection (
+                id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+                repo_id                 INTEGER NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
+                pattern                 TEXT NOT NULL,
+                require_pr              INTEGER NOT NULL DEFAULT 1,
+                require_approvals       INTEGER NOT NULL DEFAULT 1,
+                dismiss_stale_reviews   INTEGER NOT NULL DEFAULT 1,
+                UNIQUE(repo_id, pattern)
+            );"
+        )?;
+
         Ok(())
     }
 
@@ -241,6 +348,7 @@ impl Database {
             default_branch: "main".to_string(),
             owner_type: owner_type.to_string(),
             org_id,
+            forked_from: None,
             created_at: now.clone(),
             updated_at: now,
         })
@@ -249,7 +357,7 @@ impl Database {
     pub async fn list_user_repos(&self, user_id: i64) -> Result<Vec<Repository>, rusqlite::Error> {
         let conn = self.conn.lock().await;
         let mut stmt = conn.prepare(
-            "SELECT id, user_id, name, description, is_private, default_branch, owner_type, org_id, created_at, updated_at
+            "SELECT id, user_id, name, description, is_private, default_branch, owner_type, org_id, created_at, updated_at, forked_from
              FROM repositories WHERE user_id = ?1 AND owner_type = 'user' ORDER BY updated_at DESC"
         )?;
         let rows = stmt.query_map(params![user_id], map_repo_row)?;
@@ -259,7 +367,7 @@ impl Database {
     pub async fn list_org_repos(&self, org_id: i64) -> Result<Vec<Repository>, rusqlite::Error> {
         let conn = self.conn.lock().await;
         let mut stmt = conn.prepare(
-            "SELECT id, user_id, name, description, is_private, default_branch, owner_type, org_id, created_at, updated_at
+            "SELECT id, user_id, name, description, is_private, default_branch, owner_type, org_id, created_at, updated_at, forked_from
              FROM repositories WHERE org_id = ?1 AND owner_type = 'org' ORDER BY updated_at DESC"
         )?;
         let rows = stmt.query_map(params![org_id], map_repo_row)?;
@@ -269,7 +377,7 @@ impl Database {
     pub async fn list_org_repos_with_orgname(&self, org_id: i64) -> Result<Vec<OrgRepoResult>, rusqlite::Error> {
         let conn = self.conn.lock().await;
         let mut stmt = conn.prepare(
-            "SELECT r.id, r.user_id, r.name, r.description, r.is_private, r.default_branch, r.owner_type, r.org_id, r.created_at, r.updated_at, o.name as org_name
+            "SELECT r.id, r.user_id, r.name, r.description, r.is_private, r.default_branch, r.owner_type, r.org_id, r.created_at, r.updated_at, r.forked_from, o.name as org_name
              FROM repositories r JOIN organizations o ON o.id = r.org_id
              WHERE r.org_id = ?1 AND r.owner_type = 'org' ORDER BY r.updated_at DESC"
         )?;
@@ -285,7 +393,7 @@ impl Database {
                 org_id: row.get(7)?,
                 created_at: row.get(8)?,
                 updated_at: row.get(9)?,
-                org_name: row.get(10)?,
+                org_name: row.get(11)?,
             })
         })?;
         rows.collect()
@@ -294,7 +402,7 @@ impl Database {
     pub async fn list_public_user_repos(&self, user_id: i64) -> Result<Vec<Repository>, rusqlite::Error> {
         let conn = self.conn.lock().await;
         let mut stmt = conn.prepare(
-            "SELECT id, user_id, name, description, is_private, default_branch, owner_type, org_id, created_at, updated_at
+            "SELECT id, user_id, name, description, is_private, default_branch, owner_type, org_id, created_at, updated_at, forked_from
              FROM repositories WHERE user_id = ?1 AND owner_type = 'user' AND is_private = 0 ORDER BY updated_at DESC"
         )?;
         let rows = stmt.query_map(params![user_id], map_repo_row)?;
@@ -304,7 +412,7 @@ impl Database {
     pub async fn find_repo_by_name(&self, user_id: i64, name: &str) -> Result<Option<Repository>, rusqlite::Error> {
         let conn = self.conn.lock().await;
         let mut stmt = conn.prepare(
-            "SELECT id, user_id, name, description, is_private, default_branch, owner_type, org_id, created_at, updated_at
+            "SELECT id, user_id, name, description, is_private, default_branch, owner_type, org_id, created_at, updated_at, forked_from
              FROM repositories WHERE user_id = ?1 AND name = ?2 AND owner_type = 'user'"
         )?;
         let mut rows = stmt.query_map(params![user_id, name], map_repo_row)?;
@@ -317,7 +425,7 @@ impl Database {
     pub async fn find_org_repo_by_name(&self, org_id: i64, name: &str) -> Result<Option<Repository>, rusqlite::Error> {
         let conn = self.conn.lock().await;
         let mut stmt = conn.prepare(
-            "SELECT id, user_id, name, description, is_private, default_branch, owner_type, org_id, created_at, updated_at
+            "SELECT id, user_id, name, description, is_private, default_branch, owner_type, org_id, created_at, updated_at, forked_from
              FROM repositories WHERE org_id = ?1 AND name = ?2 AND owner_type = 'org'"
         )?;
         let mut rows = stmt.query_map(params![org_id, name], map_repo_row)?;
@@ -330,7 +438,7 @@ impl Database {
     pub async fn find_repo_by_id(&self, id: i64) -> Result<Option<Repository>, rusqlite::Error> {
         let conn = self.conn.lock().await;
         let mut stmt = conn.prepare(
-            "SELECT id, user_id, name, description, is_private, default_branch, owner_type, org_id, created_at, updated_at
+            "SELECT id, user_id, name, description, is_private, default_branch, owner_type, org_id, created_at, updated_at, forked_from
              FROM repositories WHERE id = ?1"
         )?;
         let mut rows = stmt.query_map(params![id], map_repo_row)?;
@@ -583,7 +691,7 @@ impl Database {
         let mut stmt = conn.prepare(
             "SELECT k.id, k.user_id, k.repo_id, k.name, k.public_key, k.created_at,
                     u.id, u.username, u.email, u.password_hash, u.bio, u.avatar_url, u.created_at,
-                    r.id, r.user_id, r.name, r.description, r.is_private, r.default_branch, r.owner_type, r.org_id, r.created_at, r.updated_at
+                    r.id, r.user_id, r.name, r.description, r.is_private, r.default_branch, r.owner_type, r.org_id, r.created_at, r.updated_at, r.forked_from
              FROM ssh_keys k
              JOIN users u ON u.id = k.user_id
              JOIN repositories r ON r.id = k.repo_id"
@@ -616,6 +724,7 @@ impl Database {
                     default_branch: row.get(18)?,
                     owner_type: row.get(19)?,
                     org_id: row.get(20)?,
+                    forked_from: row.get(23)?,
                     created_at: row.get(21)?,
                     updated_at: row.get(22)?,
                 },
@@ -890,6 +999,658 @@ impl Database {
         })?;
         rows.collect()
     }
+
+    // ── Issue operations ──
+
+    pub async fn next_issue_number(&self, repo_id: i64) -> Result<i64, rusqlite::Error> {
+        let conn = self.conn.lock().await;
+        let max: Option<i64> = conn.query_row(
+            "SELECT MAX(number) FROM issues WHERE repo_id = ?1",
+            params![repo_id],
+            |row| row.get(0),
+        ).ok();
+        Ok(max.unwrap_or(0) + 1)
+    }
+
+    pub async fn create_issue(&self, repo_id: i64, number: i64, title: &str, body: &str, author_id: i64, assignee_id: Option<i64>) -> Result<IssueWithAuthor, rusqlite::Error> {
+        let conn = self.conn.lock().await;
+        conn.execute(
+            "INSERT INTO issues (repo_id, number, title, body, author_id, assignee_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![repo_id, number, title, body, author_id, assignee_id],
+        )?;
+        let id = conn.last_insert_rowid();
+        let author_username: String = conn.query_row(
+            "SELECT username FROM users WHERE id = ?1",
+            params![author_id],
+            |row| row.get(0),
+        )?;
+        let now = chrono::Utc::now().to_rfc3339();
+        Ok(IssueWithAuthor {
+            issue: Issue {
+                id, repo_id, number,
+                title: title.to_string(),
+                body: Some(body.to_string()),
+                state: "open".to_string(),
+                author_id, assignee_id,
+                created_at: now.clone(),
+                updated_at: now,
+                closed_at: None,
+            },
+            author_username,
+            labels: vec![],
+        })
+    }
+
+    pub async fn list_issues(&self, repo_id: i64, state: Option<&str>) -> Result<Vec<IssueWithAuthor>, rusqlite::Error> {
+        let conn = self.conn.lock().await;
+        let sql = match state {
+            Some(s) if s == "open" || s == "closed" => format!(
+                "SELECT i.id, i.repo_id, i.number, i.title, i.body, i.state, i.author_id, i.assignee_id, i.created_at, i.updated_at, i.closed_at,
+                        u.username
+                 FROM issues i JOIN users u ON u.id = i.author_id
+                 WHERE i.repo_id = ?1 AND i.state = ?2
+                 ORDER BY i.number DESC"
+            ),
+            _ => format!(
+                "SELECT i.id, i.repo_id, i.number, i.title, i.body, i.state, i.author_id, i.assignee_id, i.created_at, i.updated_at, i.closed_at,
+                        u.username
+                 FROM issues i JOIN users u ON u.id = i.author_id
+                 WHERE i.repo_id = ?1
+                 ORDER BY i.number DESC"
+            ),
+        };
+
+        let mut issues: Vec<IssueWithAuthor> = if state == Some("open") || state == Some("closed") {
+            let mut stmt = conn.prepare(&sql)?;
+            let rows = stmt.query_map(params![repo_id, state], |row| {
+                Ok(IssueWithAuthor {
+                    issue: Issue {
+                        id: row.get(0)?,
+                        repo_id: row.get(1)?,
+                        number: row.get(2)?,
+                        title: row.get(3)?,
+                        body: row.get(4)?,
+                        state: row.get(5)?,
+                        author_id: row.get(6)?,
+                        assignee_id: row.get(7)?,
+                        created_at: row.get(8)?,
+                        updated_at: row.get(9)?,
+                        closed_at: row.get(10)?,
+                    },
+                    author_username: row.get(11)?,
+                    labels: vec![],
+                })
+            })?;
+            rows.collect::<Result<_, _>>()?
+        } else {
+            let mut stmt = conn.prepare(&sql)?;
+            let rows = stmt.query_map(params![repo_id], |row| {
+                Ok(IssueWithAuthor {
+                    issue: Issue {
+                        id: row.get(0)?,
+                        repo_id: row.get(1)?,
+                        number: row.get(2)?,
+                        title: row.get(3)?,
+                        body: row.get(4)?,
+                        state: row.get(5)?,
+                        author_id: row.get(6)?,
+                        assignee_id: row.get(7)?,
+                        created_at: row.get(8)?,
+                        updated_at: row.get(9)?,
+                        closed_at: row.get(10)?,
+                    },
+                    author_username: row.get(11)?,
+                    labels: vec![],
+                })
+            })?;
+            rows.collect::<Result<_, _>>()?
+        };
+        drop(conn);
+        for issue in &mut issues {
+            if let Ok(labels) = self.list_issue_labels(issue.issue.id).await {
+                issue.labels = labels;
+            }
+        }
+        Ok(issues)
+    }
+
+    pub async fn get_issue(&self, repo_id: i64, number: i64) -> Result<Option<IssueWithAuthor>, rusqlite::Error> {
+        let conn = self.conn.lock().await;
+        let sql = "SELECT i.id, i.repo_id, i.number, i.title, i.body, i.state, i.author_id, i.assignee_id, i.created_at, i.updated_at, i.closed_at,
+                          u.username
+                   FROM issues i JOIN users u ON u.id = i.author_id
+                   WHERE i.repo_id = ?1 AND i.number = ?2";
+        let mut result = {
+            let mut stmt = conn.prepare(sql)?;
+            let mut rows = stmt.query_map(params![repo_id, number], |row| {
+                Ok(IssueWithAuthor {
+                    issue: Issue {
+                        id: row.get(0)?,
+                        repo_id: row.get(1)?,
+                        number: row.get(2)?,
+                        title: row.get(3)?,
+                        body: row.get(4)?,
+                        state: row.get(5)?,
+                        author_id: row.get(6)?,
+                        assignee_id: row.get(7)?,
+                        created_at: row.get(8)?,
+                        updated_at: row.get(9)?,
+                        closed_at: row.get(10)?,
+                    },
+                    author_username: row.get(11)?,
+                    labels: vec![],
+                })
+            })?;
+            match rows.next() {
+                Some(Ok(issue)) => issue,
+                _ => return Ok(None),
+            }
+        };
+        drop(conn);
+        if let Ok(labels) = self.list_issue_labels(result.issue.id).await {
+            result.labels = labels;
+        }
+        Ok(Some(result))
+    }
+
+    pub async fn update_issue(&self, id: i64, repo_id: i64, title: Option<&str>, body: Option<&str>, state: Option<&str>, assignee_id: Option<Option<i64>>) -> Result<bool, rusqlite::Error> {
+        let conn = self.conn.lock().await;
+        let mut parts = vec!["updated_at = datetime('now')".to_string()];
+        let mut vals: Vec<String> = vec![];
+        let mut param_idx: usize = 0;
+
+        if let Some(t) = title { parts.push(format!("title = ?{}", param_idx + 1)); vals.push(t.to_string()); param_idx += 1; }
+        if let Some(b) = body { parts.push(format!("body = ?{}", param_idx + 1)); vals.push(b.to_string()); param_idx += 1; }
+        if let Some(s) = state {
+            parts.push(format!("state = ?{}", param_idx + 1)); vals.push(s.to_string()); param_idx += 1;
+            if s == "closed" { parts.push("closed_at = datetime('now')".to_string()); }
+            else { parts.push("closed_at = NULL".to_string()); }
+        }
+        if let Some(assign) = assignee_id {
+            match assign {
+                Some(aid) => { parts.push(format!("assignee_id = {}", aid)); },
+                None => { parts.push("assignee_id = NULL".to_string()); },
+            }
+        }
+
+        let sql = format!("UPDATE issues SET {} WHERE id = ?{} AND repo_id = ?{}", parts.join(", "), param_idx + 1, param_idx + 2);
+        vals.push(id.to_string());
+        vals.push(repo_id.to_string());
+
+        let params_refs: Vec<&dyn rusqlite::types::ToSql> = vals.iter().map(|v| v as &dyn rusqlite::types::ToSql).collect();
+        let affected = conn.execute(&sql, params_refs.as_slice())?;
+        Ok(affected > 0)
+    }
+
+    pub async fn delete_issue(&self, id: i64, repo_id: i64) -> Result<bool, rusqlite::Error> {
+        let conn = self.conn.lock().await;
+        conn.execute("DELETE FROM issue_label_map WHERE issue_id = ?1", params![id])?;
+        conn.execute("DELETE FROM issue_comments WHERE issue_id = ?1", params![id])?;
+        let affected = conn.execute("DELETE FROM issues WHERE id = ?1 AND repo_id = ?2", params![id, repo_id])?;
+        Ok(affected > 0)
+    }
+
+    // ── Labels ──
+
+    pub async fn create_label(&self, repo_id: i64, name: &str, color: &str) -> Result<IssueLabel, rusqlite::Error> {
+        let conn = self.conn.lock().await;
+        conn.execute(
+            "INSERT INTO issue_labels (repo_id, name, color) VALUES (?1, ?2, ?3)",
+            params![repo_id, name, color],
+        )?;
+        let id = conn.last_insert_rowid();
+        Ok(IssueLabel { id, repo_id: repo_id, name: name.to_string(), color: color.to_string() })
+    }
+
+    pub async fn list_labels(&self, repo_id: i64) -> Result<Vec<IssueLabel>, rusqlite::Error> {
+        let conn = self.conn.lock().await;
+        let mut stmt = conn.prepare(
+            "SELECT id, repo_id, name, color FROM issue_labels WHERE repo_id = ?1 ORDER BY name"
+        )?;
+        let rows = stmt.query_map(params![repo_id], |row| {
+            Ok(IssueLabel { id: row.get(0)?, repo_id: row.get(1)?, name: row.get(2)?, color: row.get(3)? })
+        })?;
+        rows.collect()
+    }
+
+    pub async fn list_issue_labels(&self, issue_id: i64) -> Result<Vec<IssueLabel>, rusqlite::Error> {
+        let conn = self.conn.lock().await;
+        let mut stmt = conn.prepare(
+            "SELECT l.id, l.repo_id, l.name, l.color
+             FROM issue_labels l
+             JOIN issue_label_map m ON m.label_id = l.id
+             WHERE m.issue_id = ?1"
+        )?;
+        let rows = stmt.query_map(params![issue_id], |row| {
+            Ok(IssueLabel { id: row.get(0)?, repo_id: row.get(1)?, name: row.get(2)?, color: row.get(3)? })
+        })?;
+        rows.collect()
+    }
+
+    pub async fn set_issue_labels(&self, issue_id: i64, label_ids: &[i64]) -> Result<(), rusqlite::Error> {
+        let conn = self.conn.lock().await;
+        conn.execute("DELETE FROM issue_label_map WHERE issue_id = ?1", params![issue_id])?;
+        for &lid in label_ids {
+            conn.execute(
+                "INSERT OR IGNORE INTO issue_label_map (issue_id, label_id) VALUES (?1, ?2)",
+                params![issue_id, lid],
+            )?;
+        }
+        Ok(())
+    }
+
+    pub async fn delete_label(&self, id: i64, repo_id: i64) -> Result<bool, rusqlite::Error> {
+        let conn = self.conn.lock().await;
+        conn.execute("DELETE FROM issue_label_map WHERE label_id = ?1", params![id])?;
+        let affected = conn.execute("DELETE FROM issue_labels WHERE id = ?1 AND repo_id = ?2", params![id, repo_id])?;
+        Ok(affected > 0)
+    }
+
+    // ── Comments ──
+
+    pub async fn add_comment(&self, issue_id: i64, author_id: i64, body: &str) -> Result<IssueComment, rusqlite::Error> {
+        let conn = self.conn.lock().await;
+        conn.execute(
+            "INSERT INTO issue_comments (issue_id, author_id, body) VALUES (?1, ?2, ?3)",
+            params![issue_id, author_id, body],
+        )?;
+        let id = conn.last_insert_rowid();
+        let author_username: String = conn.query_row(
+            "SELECT username FROM users WHERE id = ?1", params![author_id], |row| row.get(0),
+        )?;
+        let now = chrono::Utc::now().to_rfc3339();
+        Ok(IssueComment { id, issue_id, author_id, author_username, body: body.to_string(), created_at: now.clone(), updated_at: now })
+    }
+
+    pub async fn list_comments(&self, issue_id: i64) -> Result<Vec<IssueComment>, rusqlite::Error> {
+        let conn = self.conn.lock().await;
+        let mut stmt = conn.prepare(
+            "SELECT c.id, c.issue_id, c.author_id, u.username, c.body, c.created_at, c.updated_at
+             FROM issue_comments c JOIN users u ON u.id = c.author_id
+             WHERE c.issue_id = ?1 ORDER BY c.created_at ASC"
+        )?;
+        let rows = stmt.query_map(params![issue_id], |row| {
+            Ok(IssueComment {
+                id: row.get(0)?,
+                issue_id: row.get(1)?,
+                author_id: row.get(2)?,
+                author_username: row.get(3)?,
+                body: row.get(4)?,
+                created_at: row.get(5)?,
+                updated_at: row.get(6)?,
+            })
+        })?;
+        rows.collect()
+    }
+
+    // ── Pull Request operations ──
+
+    pub async fn next_pr_number(&self, repo_id: i64) -> Result<i64, rusqlite::Error> {
+        let conn = self.conn.lock().await;
+        let max: Option<i64> = conn.query_row(
+            "SELECT MAX(number) FROM pull_requests WHERE repo_id = ?1",
+            params![repo_id],
+            |row| row.get(0),
+        ).ok();
+        Ok(max.unwrap_or(0) + 1)
+    }
+
+    pub async fn create_pr(&self, repo_id: i64, number: i64, title: &str, body: &str, author_id: i64, head_repo_id: i64, head_ref: &str, base_ref: &str) -> Result<PullRequestWithAuthor, rusqlite::Error> {
+        let conn = self.conn.lock().await;
+        conn.execute(
+            "INSERT INTO pull_requests (repo_id, number, title, body, author_id, head_repo_id, head_ref, base_ref) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![repo_id, number, title, body, author_id, head_repo_id, head_ref, base_ref],
+        )?;
+        let id = conn.last_insert_rowid();
+        let author_username: String = conn.query_row(
+            "SELECT username FROM users WHERE id = ?1", params![author_id], |row| row.get(0),
+        )?;
+        let head_repo_name: String = conn.query_row(
+            "SELECT name FROM repositories WHERE id = ?1", params![head_repo_id], |row| row.get(0),
+        )?;
+        let head_repo_owner: String = conn.query_row(
+            "SELECT COALESCE(u.username, o.name) FROM repositories r
+             LEFT JOIN users u ON u.id = r.user_id AND r.owner_type = 'user'
+             LEFT JOIN organizations o ON o.id = r.org_id AND r.owner_type = 'org'
+             WHERE r.id = ?1",
+            params![head_repo_id], |row| row.get(0),
+        )?;
+        let now = chrono::Utc::now().to_rfc3339();
+        Ok(PullRequestWithAuthor {
+            pr: PullRequest {
+                id, repo_id, number,
+                title: title.to_string(),
+                body: Some(body.to_string()),
+                state: "open".to_string(),
+                author_id, head_repo_id,
+                head_ref: head_ref.to_string(),
+                base_ref: base_ref.to_string(),
+                merge_commit_sha: None,
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                closed_at: None,
+                merged_at: None,
+            },
+            author_username,
+            head_repo_name,
+            head_repo_owner,
+        })
+    }
+
+    pub async fn list_prs(&self, repo_id: i64, state: Option<&str>) -> Result<Vec<PullRequestWithAuthor>, rusqlite::Error> {
+        let conn = self.conn.lock().await;
+        let sql = match state {
+            Some(s) if s == "open" || s == "closed" || s == "merged" => format!(
+                "SELECT p.id, p.repo_id, p.number, p.title, p.body, p.state, p.author_id, p.head_repo_id, p.head_ref, p.base_ref, p.merge_commit_sha, p.created_at, p.updated_at, p.closed_at, p.merged_at,
+                        u.username, hr.name, COALESCE(u2.username, o.name)
+                 FROM pull_requests p
+                 JOIN users u ON u.id = p.author_id
+                 JOIN repositories hr ON hr.id = p.head_repo_id
+                 LEFT JOIN users u2 ON u2.id = hr.user_id AND hr.owner_type = 'user'
+                 LEFT JOIN organizations o ON o.id = hr.org_id AND hr.owner_type = 'org'
+                 WHERE p.repo_id = ?1 AND p.state = ?2
+                 ORDER BY p.number DESC"
+            ),
+            _ => format!(
+                "SELECT p.id, p.repo_id, p.number, p.title, p.body, p.state, p.author_id, p.head_repo_id, p.head_ref, p.base_ref, p.merge_commit_sha, p.created_at, p.updated_at, p.closed_at, p.merged_at,
+                        u.username, hr.name, COALESCE(u2.username, o.name)
+                 FROM pull_requests p
+                 JOIN users u ON u.id = p.author_id
+                 JOIN repositories hr ON hr.id = p.head_repo_id
+                 LEFT JOIN users u2 ON u2.id = hr.user_id AND hr.owner_type = 'user'
+                 LEFT JOIN organizations o ON o.id = hr.org_id AND hr.owner_type = 'org'
+                 WHERE p.repo_id = ?1
+                 ORDER BY p.number DESC"
+            ),
+        };
+
+        let map_fn = |row: &rusqlite::Row| -> rusqlite::Result<PullRequestWithAuthor> {
+            Ok(PullRequestWithAuthor {
+                pr: PullRequest {
+                    id: row.get(0)?, repo_id: row.get(1)?, number: row.get(2)?,
+                    title: row.get(3)?, body: row.get(4)?, state: row.get(5)?,
+                    author_id: row.get(6)?, head_repo_id: row.get(7)?,
+                    head_ref: row.get(8)?, base_ref: row.get(9)?,
+                    merge_commit_sha: row.get(10)?,
+                    created_at: row.get(11)?, updated_at: row.get(12)?,
+                    closed_at: row.get(13)?, merged_at: row.get(14)?,
+                },
+                author_username: row.get(15)?,
+                head_repo_name: row.get(16)?,
+                head_repo_owner: row.get(17)?,
+            })
+        };
+
+        if state == Some("open") || state == Some("closed") || state == Some("merged") {
+            let mut stmt = conn.prepare(&sql)?;
+            let rows = stmt.query_map(params![repo_id, state], map_fn)?;
+            rows.collect()
+        } else {
+            let mut stmt = conn.prepare(&sql)?;
+            let rows = stmt.query_map(params![repo_id], map_fn)?;
+            rows.collect()
+        }
+    }
+
+    pub async fn get_pr(&self, repo_id: i64, number: i64) -> Result<Option<PullRequestWithAuthor>, rusqlite::Error> {
+        let conn = self.conn.lock().await;
+        let mut stmt = conn.prepare(
+            "SELECT p.id, p.repo_id, p.number, p.title, p.body, p.state, p.author_id, p.head_repo_id, p.head_ref, p.base_ref, p.merge_commit_sha, p.created_at, p.updated_at, p.closed_at, p.merged_at,
+                    u.username, hr.name, COALESCE(u2.username, o.name)
+             FROM pull_requests p
+             JOIN users u ON u.id = p.author_id
+             JOIN repositories hr ON hr.id = p.head_repo_id
+             LEFT JOIN users u2 ON u2.id = hr.user_id AND hr.owner_type = 'user'
+             LEFT JOIN organizations o ON o.id = hr.org_id AND hr.owner_type = 'org'
+             WHERE p.repo_id = ?1 AND p.number = ?2"
+        )?;
+        let mut rows = stmt.query_map(params![repo_id, number], |row| {
+            Ok(PullRequestWithAuthor {
+                pr: PullRequest {
+                    id: row.get(0)?, repo_id: row.get(1)?, number: row.get(2)?,
+                    title: row.get(3)?, body: row.get(4)?, state: row.get(5)?,
+                    author_id: row.get(6)?, head_repo_id: row.get(7)?,
+                    head_ref: row.get(8)?, base_ref: row.get(9)?,
+                    merge_commit_sha: row.get(10)?,
+                    created_at: row.get(11)?, updated_at: row.get(12)?,
+                    closed_at: row.get(13)?, merged_at: row.get(14)?,
+                },
+                author_username: row.get(15)?,
+                head_repo_name: row.get(16)?,
+                head_repo_owner: row.get(17)?,
+            })
+        })?;
+        rows.next().transpose()
+    }
+
+    pub async fn update_pr(&self, id: i64, repo_id: i64, title: Option<&str>, body: Option<&str>, state: Option<&str>) -> Result<bool, rusqlite::Error> {
+        let conn = self.conn.lock().await;
+        let mut parts = vec!["updated_at = datetime('now')".to_string()];
+        let mut vals: Vec<String> = vec![];
+
+        if let Some(t) = title { parts.push(format!("title = ?{}", vals.len() + 1)); vals.push(t.to_string()); }
+        if let Some(b) = body { parts.push(format!("body = ?{}", vals.len() + 1)); vals.push(b.to_string()); }
+        if let Some(s) = state {
+            parts.push(format!("state = ?{}", vals.len() + 1)); vals.push(s.to_string());
+            if s == "closed" { parts.push("closed_at = datetime('now')".to_string()); }
+            else if s == "merged" { parts.push("merged_at = datetime('now')".to_string()); parts.push("state = 'merged'".to_string()); }
+            else { parts.push("closed_at = NULL".to_string()); }
+        }
+
+        let sql = format!("UPDATE pull_requests SET {} WHERE id = ?{} AND repo_id = ?{}", parts.join(", "), vals.len() + 1, vals.len() + 2);
+        vals.push(id.to_string());
+        vals.push(repo_id.to_string());
+        let params_refs: Vec<&dyn rusqlite::types::ToSql> = vals.iter().map(|v| v as &dyn rusqlite::types::ToSql).collect();
+        let affected = conn.execute(&sql, params_refs.as_slice())?;
+        Ok(affected > 0)
+    }
+
+    pub async fn set_pr_merge_sha(&self, pr_id: i64, merge_sha: &str) -> Result<(), rusqlite::Error> {
+        let conn = self.conn.lock().await;
+        conn.execute(
+            "UPDATE pull_requests SET merge_commit_sha = ?1, merged_at = datetime('now'), state = 'merged' WHERE id = ?2",
+            params![merge_sha, pr_id],
+        )?;
+        Ok(())
+    }
+
+    // ── Fork operations ──
+
+    pub async fn list_user_repos_all(&self, user_id: i64) -> Result<Vec<Repository>, rusqlite::Error> {
+        let conn = self.conn.lock().await;
+        let mut stmt = conn.prepare(
+            "SELECT id, user_id, name, description, is_private, default_branch, owner_type, org_id, created_at, updated_at, forked_from
+             FROM repositories WHERE user_id = ?1 AND owner_type = 'user' ORDER BY updated_at DESC"
+        )?;
+        let rows = stmt.query_map(params![user_id], map_repo_row)?;
+        rows.collect()
+    }
+
+    pub async fn set_repo_forked_from(&self, repo_id: i64, source_repo_id: i64) -> Result<(), rusqlite::Error> {
+        let conn = self.conn.lock().await;
+        conn.execute(
+            "UPDATE repositories SET forked_from = ?1 WHERE id = ?2",
+            params![source_repo_id, repo_id],
+        )?;
+        Ok(())
+    }
+
+    // ── v2.1 Settings ──
+
+    pub async fn list_access_tokens(&self, user_id: i64) -> Result<Vec<AccessToken>, rusqlite::Error> {
+        let conn = self.conn.lock().await;
+        let mut stmt = conn.prepare(
+            "SELECT id, user_id, name, token_prefix, scopes, last_used_at, created_at, expires_at
+             FROM access_tokens WHERE user_id = ?1 ORDER BY created_at DESC"
+        )?;
+        let rows = stmt.query_map(params![user_id], |row| {
+            Ok(AccessToken {
+                id: row.get(0)?,
+                user_id: row.get(1)?,
+                name: row.get(2)?,
+                token_prefix: row.get(3)?,
+                scopes: row.get(4)?,
+                last_used_at: row.get(5)?,
+                created_at: row.get(6)?,
+                expires_at: row.get(7)?,
+            })
+        })?;
+        rows.collect()
+    }
+
+    pub async fn create_access_token(&self, user_id: i64, name: &str, token_hash: &str, token_prefix: &str, scopes: &str, expires_at: Option<&str>) -> Result<AccessToken, rusqlite::Error> {
+        let conn = self.conn.lock().await;
+        let expires_at = expires_at.map(|s| s.to_string());
+        conn.execute(
+            "INSERT INTO access_tokens (user_id, name, token_prefix, token_hash, scopes, expires_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![user_id, name, token_prefix, token_hash, scopes, expires_at],
+        )?;
+        let id = conn.last_insert_rowid();
+        Ok(AccessToken {
+            id,
+            user_id,
+            name: name.to_string(),
+            token_prefix: token_prefix.to_string(),
+            scopes: scopes.to_string(),
+            last_used_at: None,
+            created_at: chrono::Utc::now().to_rfc3339(),
+            expires_at,
+        })
+    }
+
+    pub async fn delete_access_token(&self, token_id: i64, user_id: i64) -> Result<bool, rusqlite::Error> {
+        let conn = self.conn.lock().await;
+        let affected = conn.execute(
+            "DELETE FROM access_tokens WHERE id = ?1 AND user_id = ?2",
+            params![token_id, user_id],
+        )?;
+        Ok(affected > 0)
+    }
+
+    pub async fn add_collaborator(&self, repo_id: i64, user_id: i64, permission: &str) -> Result<(), rusqlite::Error> {
+        let conn = self.conn.lock().await;
+        conn.execute(
+            "INSERT OR REPLACE INTO repo_collaborators (repo_id, user_id, permission) VALUES (?1, ?2, ?3)",
+            params![repo_id, user_id, permission],
+        )?;
+        Ok(())
+    }
+
+    pub async fn list_collaborators(&self, repo_id: i64) -> Result<Vec<RepoCollaborator>, rusqlite::Error> {
+        let conn = self.conn.lock().await;
+        let mut stmt = conn.prepare(
+            "SELECT rc.repo_id, rc.user_id, rc.permission, u.username, u.avatar_url
+             FROM repo_collaborators rc
+             JOIN users u ON u.id = rc.user_id
+             WHERE rc.repo_id = ?1"
+        )?;
+        let rows = stmt.query_map(params![repo_id], |row| {
+            Ok(RepoCollaborator {
+                repo_id: row.get(0)?,
+                user_id: row.get(1)?,
+                permission: row.get(2)?,
+                username: row.get(3)?,
+                avatar_url: row.get(4)?,
+            })
+        })?;
+        rows.collect()
+    }
+
+    pub async fn remove_collaborator(&self, repo_id: i64, user_id: i64) -> Result<bool, rusqlite::Error> {
+        let conn = self.conn.lock().await;
+        let affected = conn.execute(
+            "DELETE FROM repo_collaborators WHERE repo_id = ?1 AND user_id = ?2",
+            params![repo_id, user_id],
+        )?;
+        Ok(affected > 0)
+    }
+
+    pub async fn create_secret(&self, repo_id: i64, name: &str, encrypted_value: &[u8]) -> Result<RepoSecret, rusqlite::Error> {
+        let conn = self.conn.lock().await;
+        conn.execute(
+            "INSERT INTO repo_secrets (repo_id, name, encrypted_value) VALUES (?1, ?2, ?3)",
+            params![repo_id, name, encrypted_value],
+        )?;
+        let id = conn.last_insert_rowid();
+        Ok(RepoSecret {
+            id,
+            repo_id,
+            name: name.to_string(),
+            created_at: chrono::Utc::now().to_rfc3339(),
+        })
+    }
+
+    pub async fn list_secrets(&self, repo_id: i64) -> Result<Vec<RepoSecret>, rusqlite::Error> {
+        let conn = self.conn.lock().await;
+        let mut stmt = conn.prepare(
+            "SELECT id, repo_id, name, created_at FROM repo_secrets WHERE repo_id = ?1 ORDER BY created_at DESC"
+        )?;
+        let rows = stmt.query_map(params![repo_id], |row| {
+            Ok(RepoSecret {
+                id: row.get(0)?,
+                repo_id: row.get(1)?,
+                name: row.get(2)?,
+                created_at: row.get(3)?,
+            })
+        })?;
+        rows.collect()
+    }
+
+    pub async fn delete_secret(&self, secret_id: i64, repo_id: i64) -> Result<bool, rusqlite::Error> {
+        let conn = self.conn.lock().await;
+        let affected = conn.execute(
+            "DELETE FROM repo_secrets WHERE id = ?1 AND repo_id = ?2",
+            params![secret_id, repo_id],
+        )?;
+        Ok(affected > 0)
+    }
+
+    pub async fn create_branch_protection(&self, repo_id: i64, pattern: &str, require_pr: bool, require_approvals: i64, dismiss_stale_reviews: bool) -> Result<BranchProtection, rusqlite::Error> {
+        let conn = self.conn.lock().await;
+        conn.execute(
+            "INSERT OR REPLACE INTO branch_protection (repo_id, pattern, require_pr, require_approvals, dismiss_stale_reviews)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![repo_id, pattern, require_pr as i32, require_approvals, dismiss_stale_reviews as i32],
+        )?;
+        let id = conn.last_insert_rowid();
+        Ok(BranchProtection {
+            id,
+            repo_id,
+            pattern: pattern.to_string(),
+            require_pr,
+            require_approvals,
+            dismiss_stale_reviews,
+        })
+    }
+
+    pub async fn list_branch_protections(&self, repo_id: i64) -> Result<Vec<BranchProtection>, rusqlite::Error> {
+        let conn = self.conn.lock().await;
+        let mut stmt = conn.prepare(
+            "SELECT id, repo_id, pattern, require_pr, require_approvals, dismiss_stale_reviews
+             FROM branch_protection WHERE repo_id = ?1"
+        )?;
+        let rows = stmt.query_map(params![repo_id], |row| {
+            Ok(BranchProtection {
+                id: row.get(0)?,
+                repo_id: row.get(1)?,
+                pattern: row.get(2)?,
+                require_pr: row.get::<_, i32>(3)? != 0,
+                require_approvals: row.get(4)?,
+                dismiss_stale_reviews: row.get::<_, i32>(5)? != 0,
+            })
+        })?;
+        rows.collect()
+    }
+
+    pub async fn delete_branch_protection(&self, protection_id: i64, repo_id: i64) -> Result<bool, rusqlite::Error> {
+        let conn = self.conn.lock().await;
+        let affected = conn.execute(
+            "DELETE FROM branch_protection WHERE id = ?1 AND repo_id = ?2",
+            params![protection_id, repo_id],
+        )?;
+        Ok(affected > 0)
+    }
 }
 
 fn map_repo_row(row: &rusqlite::Row) -> rusqlite::Result<Repository> {
@@ -902,6 +1663,7 @@ fn map_repo_row(row: &rusqlite::Row) -> rusqlite::Result<Repository> {
         default_branch: row.get(5)?,
         owner_type: row.get(6)?,
         org_id: row.get(7)?,
+        forked_from: row.get(10)?,
         created_at: row.get(8)?,
         updated_at: row.get(9)?,
     })

@@ -13,7 +13,6 @@ export default function RepoPage() {
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
   const [username, setUsername] = useState('')
-  const [repoName, setRepoName] = useState('')
 
   useEffect(() => {
     if (!id) return
@@ -25,14 +24,12 @@ export default function RepoPage() {
       .then(async r => {
         setRepo(r.repo)
         const uname = r.org_name || r.username
-        const rname = r.repo.name
         setUsername(uname)
-        setRepoName(rname)
 
         const [treeRes, readmeRes, commitRes] = await Promise.all([
-          listTree(uname, rname, r.repo.default_branch),
-          getReadme(uname, rname, r.repo.default_branch),
-          listCommits(uname, rname, r.repo.default_branch),
+          listTree(uname, r.repo.name, r.repo.default_branch),
+          getReadme(uname, r.repo.name, r.repo.default_branch),
+          listCommits(uname, r.repo.name, r.repo.default_branch),
         ])
         setEntries(treeRes.entries)
         if (readmeRes.has_readme && readmeRes.rendered) setReadmeHtml(readmeRes.rendered)

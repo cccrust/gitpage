@@ -19,6 +19,8 @@ pub struct Config {
     pub runtime: RuntimeConfig,
     #[serde(default)]
     pub docker: DockerConfig,
+    #[serde(default)]
+    pub secrets: SecretsConfig,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -126,6 +128,20 @@ impl Default for DockerConfig {
             cpu_shares: 512,
             ssh_port_range_start: 22001,
             ssh_port_range_end: 22999,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct SecretsConfig {
+    pub encryption_key: String,
+}
+
+impl Default for SecretsConfig {
+    fn default() -> Self {
+        SecretsConfig {
+            encryption_key: String::new(),
         }
     }
 }

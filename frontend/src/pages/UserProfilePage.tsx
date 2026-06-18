@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { me, isLoggedIn } from '../api'
 import type { User, Repo } from '../api'
 import Spinner from '../components/Spinner'
 

@@ -9,7 +9,7 @@ export default function Dashboard() {
   const [searchResults, setSearchResults] = useState<Repo[] | null>(null)
   const [searching, setSearching] = useState(false)
   const [searchPage, setSearchPage] = useState(1)
-  const [searchTotal, setSearchTotal] = useState(0)
+  const [_searchTotal, setSearchTotal] = useState(0)
   const [searchTotalPages, setSearchTotalPages] = useState(0)
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')

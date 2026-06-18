@@ -145,6 +145,53 @@ pub fn create_app(state: AppState) -> Router {
         .route("/api/orgs/:name/members", post(handlers::orgs::add_member))
         .route("/api/orgs/:name/members/:user_id", delete(handlers::orgs::remove_member))
 
+        // v2.0: Issues
+        .route("/api/repos/:repo_id/issues", get(handlers::issues::list_issues))
+        .route("/api/repos/:repo_id/issues", post(handlers::issues::create_issue))
+        .route("/api/repos/:repo_id/issues/:issue_number", get(handlers::issues::get_issue))
+        .route("/api/repos/:repo_id/issues/:issue_number", put(handlers::issues::update_issue))
+        .route("/api/repos/:repo_id/issues/:issue_number", delete(handlers::issues::delete_issue))
+
+        // v2.0: Labels
+        .route("/api/repos/:repo_id/labels", get(handlers::issues::list_labels))
+        .route("/api/repos/:repo_id/labels", post(handlers::issues::create_label))
+        .route("/api/repos/:repo_id/labels/:label_id", delete(handlers::issues::delete_label))
+
+        // v2.0: Comments
+        .route("/api/repos/:repo_id/issues/:issue_number/comments", get(handlers::issues::list_comments))
+        .route("/api/repos/:repo_id/issues/:issue_number/comments", post(handlers::issues::add_comment))
+
+        // v2.0: Pull Requests
+        .route("/api/repos/:repo_id/pulls", get(handlers::pulls::list_prs))
+        .route("/api/repos/:repo_id/pulls", post(handlers::pulls::create_pr))
+        .route("/api/repos/:repo_id/pulls/:pr_number", get(handlers::pulls::get_pr))
+        .route("/api/repos/:repo_id/pulls/:pr_number", put(handlers::pulls::update_pr))
+        .route("/api/repos/:repo_id/pulls/:pr_number/merge", post(handlers::pulls::merge_pr))
+        .route("/api/repos/:repo_id/pulls/:pr_number/diff", get(handlers::pulls::get_pr_diff))
+
+        // v2.0: Fork
+        .route("/api/repos/:repo_id/fork", post(handlers::repos::fork_repo))
+
+        // v2.1: Access Tokens
+        .route("/api/user/tokens", get(handlers::settings::list_tokens))
+        .route("/api/user/tokens", post(handlers::settings::create_token))
+        .route("/api/user/tokens/:token_id", delete(handlers::settings::delete_token))
+
+        // v2.1: Collaborators
+        .route("/api/repos/:repo_id/collaborators", get(handlers::settings::list_collaborators))
+        .route("/api/repos/:repo_id/collaborators", post(handlers::settings::add_collaborator))
+        .route("/api/repos/:repo_id/collaborators/:user_id", delete(handlers::settings::remove_collaborator))
+
+        // v2.1: Secrets
+        .route("/api/repos/:repo_id/secrets", get(handlers::settings::list_secrets))
+        .route("/api/repos/:repo_id/secrets", post(handlers::settings::create_secret))
+        .route("/api/repos/:repo_id/secrets/:secret_id", delete(handlers::settings::delete_secret))
+
+        // v2.1: Branch Protection
+        .route("/api/repos/:repo_id/branch-protections", get(handlers::settings::list_branch_protections))
+        .route("/api/repos/:repo_id/branch-protections", post(handlers::settings::create_branch_protection))
+        .route("/api/repos/:repo_id/branch-protections/:protection_id", delete(handlers::settings::delete_branch_protection))
+
         .fallback(fallback_handler)
         .layer(middleware::from_fn(auth_middleware))
         .layer(cors)

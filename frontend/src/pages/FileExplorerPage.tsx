@@ -12,8 +12,6 @@ export default function FileExplorerPage() {
   const [currentPath, setCurrentPath] = useState('')
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
-  const [username, setUsername] = useState('')
-  const [repoName, setRepoName] = useState('')
 
   const [pending, setPending] = useState(false)
   const [changes, setChanges] = useState<WorkingTreeChange[]>([])
@@ -39,8 +37,6 @@ export default function FileExplorerPage() {
     try {
       const r = await getRepo(numId)
       setRepo(r.repo)
-      setUsername(r.org_name || r.username)
-      setRepoName(r.repo.name)
 
       const [treeRes, statusRes] = await Promise.all([
         listWorkingTree(numId, currentPath || undefined),

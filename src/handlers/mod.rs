@@ -7,3 +7,6 @@ pub mod git_smart;
 pub mod files;
 pub mod ssh_keys;
 pub mod orgs;
+pub mod issues;
+pub mod pulls;
+pub mod settings;

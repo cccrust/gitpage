@@ -5,6 +5,7 @@ use axum::{
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
+use std::process::Command;
 
 use crate::app::AppState;
 use crate::db::models::*;
@@ -269,4 +270,77 @@ pub async fn update_repo_handler(
     state.db.update_repo(repo_id, name, &description, is_private).await?;
 
     Ok(Json(json!({ "success": true })))
+}
+
+#[derive(Deserialize)]
+pub struct ForkRequest {
+    pub owner_name: String,
+}
+
+pub async fn fork_repo(
+    State(state): State<AppState>,
+    axum::Extension(user_id): axum::Extension<i64>,
+    Path(source_id): Path<i64>,
+    Json(_req): Json<ForkRequest>,
+) -> Result<(StatusCode, Json<Value>), AppError> {
+    let source_repo = state.db.find_repo_by_id(source_id).await?
+        .ok_or_else(|| AppError::NotFound("來源倉庫不存在".into()))?;
+
+    let user = state.db.find_user_by_id(user_id).await?
+        .ok_or_else(|| AppError::NotFound("使用者不存在".into()))?;
+
+    // Check for existing fork
+    let user_repos = state.db.list_user_repos_all(user_id).await?;
+    if user_repos.iter().any(|r| r.forked_from == Some(source_id)) {
+        return Err(AppError::BadRequest("已經 Fork 過此倉庫".into()));
+    }
+
+    // Ensure unique name
+    if user_repos.iter().any(|r| r.name == source_repo.name) {
+        return Err(AppError::BadRequest("已有同名倉庫".into()));
+    }
+
+    let source_owner = if source_repo.owner_type == "org" {
+        if let Some(oid) = source_repo.org_id {
+            let org = state.db.find_org_by_id(oid).await?
+                .ok_or_else(|| AppError::NotFound("組織不存在".into()))?;
+            org.name
+        } else {
+            user.username.clone()
+        }
+    } else {
+        let owner = state.db.find_user_by_id(source_repo.user_id).await?
+            .ok_or_else(|| AppError::NotFound("使用者不存在".into()))?;
+        owner.username
+    };
+
+    // Create the new repo
+    let new_repo = state.db.create_repo(
+        user_id, &source_repo.name, &source_repo.description,
+        source_repo.is_private, "user", None,
+    ).await?;
+
+    state.db.set_repo_forked_from(new_repo.id, source_id).await?;
+
+    // Clone the bare repo
+    let source_path = state.config.repo_path(&source_owner, &source_repo.name);
+    let new_path = state.config.repo_path(&user.username, &source_repo.name);
+
+    let output = Command::new("git")
+        .args(["clone", "--bare", &source_path, &new_path])
+        .output()?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        // Cleanup
+        let _ = std::fs::remove_dir_all(&new_path);
+        let _ = state.db.delete_repo(new_repo.id).await;
+        return Err(AppError::Internal(format!("Failed to clone repo: {}", stderr)));
+    }
+
+    // Create staging directory
+    let staging_path = state.config.staging_path(&user.username, &source_repo.name);
+    std::fs::create_dir_all(&staging_path)?;
+
+    Ok((StatusCode::CREATED, Json(json!({ "repo": new_repo }))))
 }

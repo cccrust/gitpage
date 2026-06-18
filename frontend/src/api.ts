@@ -348,6 +348,156 @@ export function getDeployLog(repoId: number, deployId: number) {
   return request<{ deploy_log: DeployLog }>('GET', `/api/apps/${repoId}/deploys/${deployId}`)
 }
 
+// ── v2.0 Issues & PRs ──
+
+export interface Issue {
+  id: number
+  repo_id: number
+  number: number
+  title: string
+  body: string | null
+  state: string
+  author_id: number
+  assignee_id: number | null
+  created_at: string
+  updated_at: string
+  closed_at: string | null
+}
+
+export interface IssueWithAuthor {
+  issue: Issue
+  author_username: string
+  labels: IssueLabel[]
+}
+
+export interface IssueLabel {
+  id: number
+  repo_id: number
+  name: string
+  color: string
+}
+
+export interface IssueComment {
+  id: number
+  issue_id: number
+  author_id: number
+  author_username: string
+  body: string
+  created_at: string
+  updated_at: string
+}
+
+export interface PullRequest {
+  id: number
+  repo_id: number
+  number: number
+  title: string
+  body: string | null
+  state: string
+  author_id: number
+  head_repo_id: number
+  head_ref: string
+  base_ref: string
+  merge_commit_sha: string | null
+  created_at: string
+  updated_at: string
+  closed_at: string | null
+  merged_at: string | null
+}
+
+export interface PullRequestWithAuthor {
+  pr: PullRequest
+  author_username: string
+  head_repo_name: string
+  head_repo_owner: string
+}
+
+export interface DiffEntry {
+  status: string
+  old_path: string | null
+  new_path: string | null
+}
+
+// ── Issues ──
+
+export function listIssues(repoId: number, state?: string) {
+  const params = state ? `?state=${state}` : ''
+  return request<{ issues: IssueWithAuthor[] }>('GET', `/api/repos/${repoId}/issues${params}`)
+}
+
+export function createIssue(repoId: number, title: string, body?: string) {
+  return request<{ issue: IssueWithAuthor }>('POST', `/api/repos/${repoId}/issues`, { title, body })
+}
+
+export function getIssue(repoId: number, issueNumber: number) {
+  return request<{ issue: IssueWithAuthor }>('GET', `/api/repos/${repoId}/issues/${issueNumber}`)
+}
+
+export function updateIssue(repoId: number, issueNumber: number, data: { title?: string; body?: string; state?: string }) {
+  return request<{ issue: IssueWithAuthor }>('PUT', `/api/repos/${repoId}/issues/${issueNumber}`, data)
+}
+
+export function deleteIssue(repoId: number, issueNumber: number) {
+  return request<{ deleted: boolean }>('DELETE', `/api/repos/${repoId}/issues/${issueNumber}`)
+}
+
+// ── Labels ──
+
+export function listLabels(repoId: number) {
+  return request<{ labels: IssueLabel[] }>('GET', `/api/repos/${repoId}/labels`)
+}
+
+export function createLabel(repoId: number, name: string, color: string) {
+  return request<{ label: IssueLabel }>('POST', `/api/repos/${repoId}/labels`, { name, color })
+}
+
+export function deleteLabel(repoId: number, labelId: number) {
+  return request<{ deleted: boolean }>('DELETE', `/api/repos/${repoId}/labels/${labelId}`)
+}
+
+// ── Comments ──
+
+export function listComments(repoId: number, issueNumber: number) {
+  return request<{ comments: IssueComment[] }>('GET', `/api/repos/${repoId}/issues/${issueNumber}/comments`)
+}
+
+export function addComment(repoId: number, issueNumber: number, body: string) {
+  return request<{ comment: IssueComment }>('POST', `/api/repos/${repoId}/issues/${issueNumber}/comments`, { body })
+}
+
+// ── Pull Requests ──
+
+export function listPRs(repoId: number, state?: string) {
+  const params = state ? `?state=${state}` : ''
+  return request<{ prs: PullRequestWithAuthor[] }>('GET', `/api/repos/${repoId}/pulls${params}`)
+}
+
+export function createPR(repoId: number, title: string, headRepoId: number, headRef: string, baseRef: string, body?: string) {
+  return request<{ pr: PullRequestWithAuthor }>('POST', `/api/repos/${repoId}/pulls`, { title, body, head_repo_id: headRepoId, head_ref: headRef, base_ref: baseRef })
+}
+
+export function getPR(repoId: number, prNumber: number) {
+  return request<{ pr: PullRequestWithAuthor }>('GET', `/api/repos/${repoId}/pulls/${prNumber}`)
+}
+
+export function updatePR(repoId: number, prNumber: number, data: { title?: string; body?: string; state?: string }) {
+  return request<{ pr: PullRequestWithAuthor }>('PUT', `/api/repos/${repoId}/pulls/${prNumber}`, data)
+}
+
+export function mergePR(repoId: number, prNumber: number) {
+  return request<{ merged: boolean; merge_commit_sha: string }>('POST', `/api/repos/${repoId}/pulls/${prNumber}/merge`)
+}
+
+export function getPRDiff(repoId: number, prNumber: number) {
+  return request<{ diff: DiffEntry[] }>('GET', `/api/repos/${repoId}/pulls/${prNumber}/diff`)
+}
+
+// ── Fork ──
+
+export function forkRepo(repoId: number, ownerName: string) {
+  return request<{ repo: Repo }>('POST', `/api/repos/${repoId}/fork`, { owner_name: ownerName })
+}
+
 const TEXT_EXTENSIONS = new Set([
   'txt', 'md', 'markdown', 'html', 'htm', 'css', 'js', 'ts', 'jsx', 'tsx',
   'json', 'yaml', 'yml', 'toml', 'xml', 'svg', 'csv',
@@ -423,4 +573,95 @@ export interface SshInfo {
 
 export function getSshInfo() {
   return request<SshInfo>('GET', '/api/user/ssh-info')
+}
+
+// ── v2.1 Settings ──
+
+export interface AccessToken {
+  id: number
+  user_id: number
+  name: string
+  token_prefix: string
+  scopes: string
+  last_used_at: string | null
+  created_at: string
+  expires_at: string | null
+}
+
+export interface RepoCollaborator {
+  repo_id: number
+  user_id: number
+  permission: string
+  username: string
+  avatar_url: string
+}
+
+export interface RepoSecret {
+  id: number
+  repo_id: number
+  name: string
+  created_at: string
+}
+
+export interface BranchProtection {
+  id: number
+  repo_id: number
+  pattern: string
+  require_pr: boolean
+  require_approvals: number
+  dismiss_stale_reviews: boolean
+}
+
+// Tokens
+export function listTokens() {
+  return request<{ tokens: AccessToken[] }>('GET', '/api/user/tokens')
+}
+
+export function createToken(name: string, scopes?: string, expiresAt?: string) {
+  return request<{ token: AccessToken; raw_token: string }>('POST', '/api/user/tokens', { name, scopes, expires_at: expiresAt })
+}
+
+export function deleteToken(tokenId: number) {
+  return request<{ success: boolean }>('DELETE', `/api/user/tokens/${tokenId}`)
+}
+
+// Collaborators
+export function listCollaborators(repoId: number) {
+  return request<{ collaborators: RepoCollaborator[] }>('GET', `/api/repos/${repoId}/collaborators`)
+}
+
+export function addCollaborator(repoId: number, username: string, permission?: string) {
+  return request<{ success: boolean }>('POST', `/api/repos/${repoId}/collaborators`, { username, permission })
+}
+
+export function removeCollaborator(repoId: number, userId: number) {
+  return request<{ success: boolean }>('DELETE', `/api/repos/${repoId}/collaborators/${userId}`)
+}
+
+// Secrets
+export function listSecrets(repoId: number) {
+  return request<{ secrets: RepoSecret[] }>('GET', `/api/repos/${repoId}/secrets`)
+}
+
+export function createSecret(repoId: number, name: string, value: string) {
+  return request<{ secret: RepoSecret }>('POST', `/api/repos/${repoId}/secrets`, { name, value })
+}
+
+export function deleteSecret(repoId: number, secretId: number) {
+  return request<{ success: boolean }>('DELETE', `/api/repos/${repoId}/secrets/${secretId}`)
+}
+
+// Branch Protection
+export function listBranchProtections(repoId: number) {
+  return request<{ branch_protections: BranchProtection[] }>('GET', `/api/repos/${repoId}/branch-protections`)
+}
+
+export function createBranchProtection(repoId: number, pattern: string, requirePr?: boolean, requireApprovals?: number, dismissStaleReviews?: boolean) {
+  return request<{ branch_protection: BranchProtection }>('POST', `/api/repos/${repoId}/branch-protections`, {
+    pattern, require_pr: requirePr, require_approvals: requireApprovals, dismiss_stale_reviews: dismissStaleReviews
+  })
+}
+
+export function deleteBranchProtection(repoId: number, protectionId: number) {
+  return request<{ success: boolean }>('DELETE', `/api/repos/${repoId}/branch-protections/${protectionId}`)
 }

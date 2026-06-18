@@ -71,7 +71,13 @@ fi
     db.run_migrations().await.expect("Failed to run migrations");
 
     let jwt_secret = cfg.jwt.effective_secret();
-    auth::init_jwt_secret(jwt_secret);
+    auth::init_jwt_secret(jwt_secret.clone());
+    let enc_key = if cfg.secrets.encryption_key.is_empty() {
+        jwt_secret
+    } else {
+        cfg.secrets.encryption_key.clone()
+    };
+    auth::init_encryption_key(&enc_key);
 
     let app_manager = deploy::AppProcessManager::new(
         cfg.apps.port_range_start,

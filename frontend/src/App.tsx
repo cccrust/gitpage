@@ -23,6 +23,10 @@ import OrgDetail from './pages/OrgDetail'
 import OrgSettings from './pages/OrgSettings'
 import OrgMembers from './pages/OrgMembers'
 import DockerStatusPage from './pages/DockerStatusPage'
+import SettingsTokensPage from './pages/SettingsTokensPage'
+import RepoSettingsCollaboratorsPage from './pages/RepoSettingsCollaboratorsPage'
+import RepoSettingsSecretsPage from './pages/RepoSettingsSecretsPage'
+import RepoSettingsBranchProtectionPage from './pages/RepoSettingsBranchProtectionPage'
 
 export default function App() {
   return (
@@ -47,6 +51,10 @@ export default function App() {
           <Route path="/repo/:id/ssh" element={<RepoSSHKeysPage />} />
           <Route path="/u/:username" element={<UserProfilePage />} />
           <Route path="/settings" element={<UserSettingsPage />} />
+          <Route path="/settings/tokens" element={<SettingsTokensPage />} />
+          <Route path="/repo/:id/collaborators" element={<RepoSettingsCollaboratorsPage />} />
+          <Route path="/repo/:id/secrets" element={<RepoSettingsSecretsPage />} />
+          <Route path="/repo/:id/branch-protection" element={<RepoSettingsBranchProtectionPage />} />
           <Route path="/orgs" element={<OrgList />} />
           <Route path="/orgs/new" element={<OrgCreate />} />
           <Route path="/org/:name/members" element={<OrgMembers />} />

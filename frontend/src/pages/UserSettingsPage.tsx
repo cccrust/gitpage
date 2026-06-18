@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { me, updateProfile, changePassword, isLoggedIn } from '../api'
 import type { User } from '../api'
 import Spinner from '../components/Spinner'
@@ -59,6 +60,9 @@ export default function UserSettingsPage() {
   return (
     <div className="profile-page" style={{ maxWidth: 500 }}>
       <h2>設定</h2>
+      <div style={{ marginBottom: 16 }}>
+        <Link to="/settings/tokens" className="btn-sm">Access Tokens</Link>
+      </div>
 
       <section style={{ marginBottom: 32 }}>
         <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>個人資料</h3>
