@@ -36,7 +36,7 @@ input[type="search"],
 textarea,
 select {
   width: 100%;
-  padding: 10px 12px;
+  padding: 14px 16px;
   border: var(--border);
   border-radius: var(--radius);
   font-size: 15px;
@@ -54,13 +54,16 @@ input::placeholder, textarea::placeholder { color: #aaa; }
 textarea { resize: vertical; min-height: 80px; }
 
 label {
-  display: block;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
   font-size: 13px;
   font-weight: 600;
   color: #555;
-  margin-bottom: 4px;
   letter-spacing: .01em;
 }
+
+.form { display: flex; flex-direction: column; gap: 14px; }
 label.checkbox {
   display: flex;
   align-items: center;
@@ -154,7 +157,7 @@ label.checkbox input[type="checkbox"] {
 /* ── Auth forms ── */
 .auth-page { padding: 60px 16px; max-width: 360px; margin: 0 auto; }
 .auth-page h2 { font-size: 22px; font-weight: 600; margin-bottom: 24px; }
-.auth-page form { display: flex; flex-direction: column; gap: 4px; }
+.auth-page form { display: flex; flex-direction: column; gap: 14px; }
 .auth-page label { margin-top: 8px; }
 .auth-page .switch { font-size: 14px; color: var(--muted); margin-top: 16px; text-align: center; }
 
@@ -216,7 +219,7 @@ label.checkbox input[type="checkbox"] {
 }
 .settings-page .breadcrumb a:hover, .new-repo-page .breadcrumb a:hover { text-decoration: underline; }
 .settings-page form, .new-repo-page form {
-  display: flex; flex-direction: column; gap: 6px;
+  display: flex; flex-direction: column; gap: 14px;
 }
 .settings-page hr { border: none; border-top: 1px solid #eee; margin: 24px 0; }
 .settings-page .danger-zone {
