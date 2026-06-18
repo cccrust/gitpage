@@ -192,6 +192,20 @@ pub fn create_app(state: AppState) -> Router {
         .route("/api/repos/:repo_id/branch-protections", post(handlers::settings::create_branch_protection))
         .route("/api/repos/:repo_id/branch-protections/:protection_id", delete(handlers::settings::delete_branch_protection))
 
+        // v2.2: Stars
+        .route("/api/repos/:repo_id/star", put(handlers::stars::star_repo))
+        .route("/api/repos/:repo_id/star", delete(handlers::stars::unstar_repo))
+        .route("/api/repos/:repo_id/star", get(handlers::stars::get_star_status))
+        .route("/api/repos/:repo_id/stars", get(handlers::stars::list_stargazers))
+
+        // v2.2: Watches
+        .route("/api/repos/:repo_id/watch", put(handlers::stars::watch_repo))
+        .route("/api/repos/:repo_id/watch", delete(handlers::stars::unwatch_repo))
+        .route("/api/repos/:repo_id/watch", get(handlers::stars::get_watch_status))
+
+        // v2.2: User stars
+        .route("/api/users/:username/stars", get(handlers::stars::list_user_stars))
+
         .fallback(fallback_handler)
         .layer(middleware::from_fn(auth_middleware))
         .layer(cors)

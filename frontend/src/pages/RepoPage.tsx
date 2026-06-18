@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { getRepo, listTree, getReadme, listCommits, type Repo, type TreeEntry, type CommitInfo } from '../api'
+import { getRepo, listTree, getReadme, listCommits, me, forkRepo, starRepo, unstarRepo, getStarStatus, type Repo, type TreeEntry, type CommitInfo } from '../api'
 import MarkdownView from '../components/MarkdownView'
 import Spinner from '../components/Spinner'
 
@@ -13,6 +13,8 @@ export default function RepoPage() {
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
   const [username, setUsername] = useState('')
+  const [starred, setStarred] = useState(false)
+  const [forking, setForking] = useState(false)
 
   useEffect(() => {
     if (!id) return
@@ -20,6 +22,7 @@ export default function RepoPage() {
     if (isNaN(numId)) { setErr('ID 無效'); setLoading(false); return }
 
     setLoading(true)
+    const token = localStorage.getItem('token')
     getRepo(numId)
       .then(async r => {
         setRepo(r.repo)
@@ -34,10 +37,44 @@ export default function RepoPage() {
         setEntries(treeRes.entries)
         if (readmeRes.has_readme && readmeRes.rendered) setReadmeHtml(readmeRes.rendered)
         setCommits(commitRes.commits)
+
+        if (token) {
+          try {
+            const s = await getStarStatus(numId)
+            setStarred(s.starred)
+          } catch {}
+        }
       })
       .catch(e => setErr(e.message))
       .finally(() => setLoading(false))
   }, [id])
+
+  const toggleStar = async () => {
+    if (!id) return
+    const numId = parseInt(id)
+    if (starred) {
+      const r = await unstarRepo(numId)
+      setStarred(false)
+      if (repo) setRepo({ ...repo, stars_count: r.stars_count })
+    } else {
+      const r = await starRepo(numId)
+      setStarred(true)
+      if (repo) setRepo({ ...repo, stars_count: r.stars_count })
+    }
+  }
+
+  const doFork = async () => {
+    if (!id) return
+    setForking(true)
+    try {
+      const m = await me()
+      const r = await forkRepo(parseInt(id), m.user.username)
+      window.location.href = `/repo/${r.repo.id}`
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : 'Fork 失敗')
+    }
+    setForking(false)
+  }
 
   if (loading) return <Spinner />
   if (err) return <div className="error-box">{err}</div>
@@ -53,13 +90,25 @@ export default function RepoPage() {
         </div>
         <h1>{repo.name}</h1>
         {repo.description && <p className="desc">{repo.description}</p>}
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center', fontSize: 13, color: '#7c7c7c', marginBottom: 8 }}>
+          <button onClick={toggleStar} className="btn-sm" style={{ cursor: 'pointer' }}>
+            {starred ? '★' : '☆'} Star {repo.stars_count || 0}
+          </button>
+          <span>🍴 {repo.forks_count || 0}</span>
+          <span>👁 {repo.watch_count || 0}</span>
+        </div>
         <div className="actions">
           <Link to={`/repo/${repo.id}/commits/${branch}`} className="btn-sm">Commits</Link>
           <Link to={`/repo/${repo.id}/files`} className="btn-sm">Files</Link>
+          <Link to={`/repo/${repo.id}/issues`} className="btn-sm">Issues</Link>
+          <Link to={`/repo/${repo.id}/pulls`} className="btn-sm">PRs</Link>
           <Link to={`/repo/${repo.id}/pages`} className="btn-sm">Pages</Link>
           <Link to={`/repo/${repo.id}/app`} className="btn-sm">App</Link>
           <Link to={`/repo/${repo.id}/ssh`} className="btn-sm">SSH</Link>
           <Link to={`/repo/${repo.id}/settings`} className="btn-sm">Settings</Link>
+          <button onClick={doFork} disabled={forking} className="btn-sm" style={{ cursor: 'pointer' }}>
+            {forking ? 'Forking...' : 'Fork'}
+          </button>
           <span style={{ fontSize: 12, color: '#7c7c7c', padding: '6px 0' }}>
             {repo.is_private ? 'Private' : 'Public'}
           </span>

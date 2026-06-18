@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { listRepos, type Repo, isLoggedIn } from '../api'
+import { listRepos, listUserStars, type Repo, isLoggedIn } from '../api'
 import Spinner from '../components/Spinner'
 
 export default function Dashboard() {
   const [repos, setRepos] = useState<Repo[]>([])
+  const [starredRepos, setStarredRepos] = useState<Repo[]>([])
+  const [tab, setTab] = useState<'repos' | 'starred'>('repos')
   const [searchQ, setSearchQ] = useState('')
   const [searchResults, setSearchResults] = useState<Repo[] | null>(null)
   const [searching, setSearching] = useState(false)
@@ -20,8 +22,14 @@ export default function Dashboard() {
       setLoading(false)
       return
     }
-    listRepos()
-      .then(r => setRepos(r.repos))
+    Promise.all([
+      listRepos(),
+      listUserStars('me').catch(() => ({ repos: [] })),
+    ])
+      .then(([r, s]) => {
+        setRepos(r.repos)
+        setStarredRepos(s.repos)
+      })
       .catch(e => setErr(e.message))
       .finally(() => setLoading(false))
   }, [loggedIn])
@@ -40,7 +48,8 @@ export default function Dashboard() {
     setSearching(false)
   }
 
-  const displayRepos = searchResults !== null ? searchResults : repos
+  const currentRepos = tab === 'starred' ? starredRepos : repos
+  const displayRepos = searchResults !== null ? searchResults : currentRepos
 
   if (!loggedIn) {
     return (
@@ -68,6 +77,23 @@ export default function Dashboard() {
         <Link to="/new" className="btn-sm">+ New</Link>
       </div>
 
+      <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+        <button
+          className={`btn-sm ${tab === 'repos' ? '' : ''}`}
+          onClick={() => setTab('repos')}
+          style={{ fontWeight: tab === 'repos' ? 700 : 400, cursor: 'pointer' }}
+        >
+          My Repos
+        </button>
+        <button
+          className={`btn-sm ${tab === 'starred' ? '' : ''}`}
+          onClick={() => setTab('starred')}
+          style={{ fontWeight: tab === 'starred' ? 700 : 400, cursor: 'pointer' }}
+        >
+          Starred ({starredRepos.length})
+        </button>
+      </div>
+
       <div className="search-bar" style={{ marginBottom: 12 }}>
         <input
           type="text"
@@ -83,8 +109,8 @@ export default function Dashboard() {
 
       {displayRepos.length === 0 ? (
         <div className="empty-state">
-          <p>{searchResults !== null ? 'No results' : 'No repositories yet'}</p>
-          {searchResults === null && <Link to="/new" style={{ fontSize: 14, textDecoration: 'underline' }}>Create one</Link>}
+          <p>{searchResults !== null ? 'No results' : tab === 'starred' ? 'No starred repos' : 'No repositories yet'}</p>
+          {searchResults === null && tab === 'repos' && <Link to="/new" style={{ fontSize: 14, textDecoration: 'underline' }}>Create one</Link>}
         </div>
       ) : (
         <>
@@ -94,6 +120,7 @@ export default function Dashboard() {
               {r.description && <div className="desc">{r.description}</div>}
               <div className="meta">
                 <span>{r.is_private ? 'Private' : 'Public'}</span>
+                <span>★ {r.stars_count || 0}</span>
                 <span>{r.updated_at?.slice(0, 10)}</span>
               </div>
             </Link>

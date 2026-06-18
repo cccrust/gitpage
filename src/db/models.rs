@@ -43,6 +43,9 @@ pub struct Repository {
     pub owner_type: String,
     pub org_id: Option<i64>,
     pub forked_from: Option<i64>,
+    pub stars_count: i64,
+    pub forks_count: i64,
+    pub watch_count: i64,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -264,6 +267,23 @@ pub struct DiffEntry {
     pub status: String,
     pub old_path: Option<String>,
     pub new_path: Option<String>,
+}
+
+// ── v2.2 Social models ──
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Star {
+    pub user_id: i64,
+    pub repo_id: i64,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Watch {
+    pub user_id: i64,
+    pub repo_id: i64,
+    pub watch_type: String,
+    pub created_at: String,
 }
 
 // ── v2.1 Settings models ──

@@ -3,7 +3,7 @@ pub mod models;
 use rusqlite::{Connection, params};
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use models::{User, Repository, PagesConfig, AppsConfig, DeployLog, SshKey, SearchResultItem, Organization, OrganizationMember, OrganizationWithRole, OrgRepoResult, EnabledAppWithOwner, Issue, IssueWithAuthor, IssueLabel, IssueComment, PullRequest, PullRequestWithAuthor, AccessToken, RepoCollaborator, RepoSecret, BranchProtection};
+use models::{User, UserPublic, Repository, PagesConfig, AppsConfig, DeployLog, SshKey, SearchResultItem, Organization, OrganizationMember, OrganizationWithRole, OrgRepoResult, EnabledAppWithOwner, Issue, IssueWithAuthor, IssueLabel, IssueComment, PullRequest, PullRequestWithAuthor, AccessToken, RepoCollaborator, RepoSecret, BranchProtection, Star, Watch};
 
 #[derive(Clone)]
 pub struct Database {
@@ -221,6 +221,35 @@ impl Database {
             "ALTER TABLE repositories ADD COLUMN forked_from INTEGER REFERENCES repositories(id);"
         ).ok();
 
+        // Add count columns to repositories (v2.2)
+        conn.execute_batch(
+            "ALTER TABLE repositories ADD COLUMN stars_count INTEGER NOT NULL DEFAULT 0;"
+        ).ok();
+        conn.execute_batch(
+            "ALTER TABLE repositories ADD COLUMN forks_count INTEGER NOT NULL DEFAULT 0;"
+        ).ok();
+        conn.execute_batch(
+            "ALTER TABLE repositories ADD COLUMN watch_count INTEGER NOT NULL DEFAULT 0;"
+        ).ok();
+
+        // v2.2 tables
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS stars (
+                user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                repo_id    INTEGER NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (user_id, repo_id)
+            );
+
+            CREATE TABLE IF NOT EXISTS watches (
+                user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                repo_id    INTEGER NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
+                watch_type TEXT NOT NULL DEFAULT 'participating',
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (user_id, repo_id)
+            );"
+        )?;
+
         // v2.1 tables
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS access_tokens (
@@ -349,6 +378,9 @@ impl Database {
             owner_type: owner_type.to_string(),
             org_id,
             forked_from: None,
+            stars_count: 0,
+            forks_count: 0,
+            watch_count: 0,
             created_at: now.clone(),
             updated_at: now,
         })
@@ -357,7 +389,7 @@ impl Database {
     pub async fn list_user_repos(&self, user_id: i64) -> Result<Vec<Repository>, rusqlite::Error> {
         let conn = self.conn.lock().await;
         let mut stmt = conn.prepare(
-            "SELECT id, user_id, name, description, is_private, default_branch, owner_type, org_id, created_at, updated_at, forked_from
+            "SELECT id, user_id, name, description, is_private, default_branch, owner_type, org_id, created_at, updated_at, forked_from, stars_count, forks_count, watch_count
              FROM repositories WHERE user_id = ?1 AND owner_type = 'user' ORDER BY updated_at DESC"
         )?;
         let rows = stmt.query_map(params![user_id], map_repo_row)?;
@@ -367,7 +399,7 @@ impl Database {
     pub async fn list_org_repos(&self, org_id: i64) -> Result<Vec<Repository>, rusqlite::Error> {
         let conn = self.conn.lock().await;
         let mut stmt = conn.prepare(
-            "SELECT id, user_id, name, description, is_private, default_branch, owner_type, org_id, created_at, updated_at, forked_from
+            "SELECT id, user_id, name, description, is_private, default_branch, owner_type, org_id, created_at, updated_at, forked_from, stars_count, forks_count, watch_count
              FROM repositories WHERE org_id = ?1 AND owner_type = 'org' ORDER BY updated_at DESC"
         )?;
         let rows = stmt.query_map(params![org_id], map_repo_row)?;
@@ -377,7 +409,7 @@ impl Database {
     pub async fn list_org_repos_with_orgname(&self, org_id: i64) -> Result<Vec<OrgRepoResult>, rusqlite::Error> {
         let conn = self.conn.lock().await;
         let mut stmt = conn.prepare(
-            "SELECT r.id, r.user_id, r.name, r.description, r.is_private, r.default_branch, r.owner_type, r.org_id, r.created_at, r.updated_at, r.forked_from, o.name as org_name
+            "SELECT r.id, r.user_id, r.name, r.description, r.is_private, r.default_branch, r.owner_type, r.org_id, r.created_at, r.updated_at, r.forked_from, r.stars_count, r.forks_count, r.watch_count, o.name as org_name
              FROM repositories r JOIN organizations o ON o.id = r.org_id
              WHERE r.org_id = ?1 AND r.owner_type = 'org' ORDER BY r.updated_at DESC"
         )?;
@@ -393,7 +425,7 @@ impl Database {
                 org_id: row.get(7)?,
                 created_at: row.get(8)?,
                 updated_at: row.get(9)?,
-                org_name: row.get(11)?,
+                org_name: row.get(14)?,
             })
         })?;
         rows.collect()
@@ -402,7 +434,7 @@ impl Database {
     pub async fn list_public_user_repos(&self, user_id: i64) -> Result<Vec<Repository>, rusqlite::Error> {
         let conn = self.conn.lock().await;
         let mut stmt = conn.prepare(
-            "SELECT id, user_id, name, description, is_private, default_branch, owner_type, org_id, created_at, updated_at, forked_from
+            "SELECT id, user_id, name, description, is_private, default_branch, owner_type, org_id, created_at, updated_at, forked_from, stars_count, forks_count, watch_count
              FROM repositories WHERE user_id = ?1 AND owner_type = 'user' AND is_private = 0 ORDER BY updated_at DESC"
         )?;
         let rows = stmt.query_map(params![user_id], map_repo_row)?;
@@ -412,7 +444,7 @@ impl Database {
     pub async fn find_repo_by_name(&self, user_id: i64, name: &str) -> Result<Option<Repository>, rusqlite::Error> {
         let conn = self.conn.lock().await;
         let mut stmt = conn.prepare(
-            "SELECT id, user_id, name, description, is_private, default_branch, owner_type, org_id, created_at, updated_at, forked_from
+            "SELECT id, user_id, name, description, is_private, default_branch, owner_type, org_id, created_at, updated_at, forked_from, stars_count, forks_count, watch_count
              FROM repositories WHERE user_id = ?1 AND name = ?2 AND owner_type = 'user'"
         )?;
         let mut rows = stmt.query_map(params![user_id, name], map_repo_row)?;
@@ -425,7 +457,7 @@ impl Database {
     pub async fn find_org_repo_by_name(&self, org_id: i64, name: &str) -> Result<Option<Repository>, rusqlite::Error> {
         let conn = self.conn.lock().await;
         let mut stmt = conn.prepare(
-            "SELECT id, user_id, name, description, is_private, default_branch, owner_type, org_id, created_at, updated_at, forked_from
+            "SELECT id, user_id, name, description, is_private, default_branch, owner_type, org_id, created_at, updated_at, forked_from, stars_count, forks_count, watch_count
              FROM repositories WHERE org_id = ?1 AND name = ?2 AND owner_type = 'org'"
         )?;
         let mut rows = stmt.query_map(params![org_id, name], map_repo_row)?;
@@ -438,7 +470,7 @@ impl Database {
     pub async fn find_repo_by_id(&self, id: i64) -> Result<Option<Repository>, rusqlite::Error> {
         let conn = self.conn.lock().await;
         let mut stmt = conn.prepare(
-            "SELECT id, user_id, name, description, is_private, default_branch, owner_type, org_id, created_at, updated_at, forked_from
+            "SELECT id, user_id, name, description, is_private, default_branch, owner_type, org_id, created_at, updated_at, forked_from, stars_count, forks_count, watch_count
              FROM repositories WHERE id = ?1"
         )?;
         let mut rows = stmt.query_map(params![id], map_repo_row)?;
@@ -691,7 +723,7 @@ impl Database {
         let mut stmt = conn.prepare(
             "SELECT k.id, k.user_id, k.repo_id, k.name, k.public_key, k.created_at,
                     u.id, u.username, u.email, u.password_hash, u.bio, u.avatar_url, u.created_at,
-                    r.id, r.user_id, r.name, r.description, r.is_private, r.default_branch, r.owner_type, r.org_id, r.created_at, r.updated_at, r.forked_from
+                    r.id, r.user_id, r.name, r.description, r.is_private, r.default_branch, r.owner_type, r.org_id, r.created_at, r.updated_at, r.forked_from, r.stars_count, r.forks_count, r.watch_count
              FROM ssh_keys k
              JOIN users u ON u.id = k.user_id
              JOIN repositories r ON r.id = k.repo_id"
@@ -724,9 +756,12 @@ impl Database {
                     default_branch: row.get(18)?,
                     owner_type: row.get(19)?,
                     org_id: row.get(20)?,
-                    forked_from: row.get(23)?,
                     created_at: row.get(21)?,
                     updated_at: row.get(22)?,
+                    forked_from: row.get(23)?,
+                    stars_count: row.get(24)?,
+                    forks_count: row.get(25)?,
+                    watch_count: row.get(26)?,
                 },
             ))
         })?;
@@ -1459,7 +1494,7 @@ impl Database {
     pub async fn list_user_repos_all(&self, user_id: i64) -> Result<Vec<Repository>, rusqlite::Error> {
         let conn = self.conn.lock().await;
         let mut stmt = conn.prepare(
-            "SELECT id, user_id, name, description, is_private, default_branch, owner_type, org_id, created_at, updated_at, forked_from
+            "SELECT id, user_id, name, description, is_private, default_branch, owner_type, org_id, created_at, updated_at, forked_from, stars_count, forks_count, watch_count
              FROM repositories WHERE user_id = ?1 AND owner_type = 'user' ORDER BY updated_at DESC"
         )?;
         let rows = stmt.query_map(params![user_id], map_repo_row)?;
@@ -1651,6 +1686,116 @@ impl Database {
         )?;
         Ok(affected > 0)
     }
+
+    // ── v2.2 Stars ──
+
+    pub async fn star_repo(&self, user_id: i64, repo_id: i64) -> Result<(), rusqlite::Error> {
+        let conn = self.conn.lock().await;
+        conn.execute(
+            "INSERT OR IGNORE INTO stars (user_id, repo_id) VALUES (?1, ?2)",
+            params![user_id, repo_id],
+        )?;
+        conn.execute(
+            "UPDATE repositories SET stars_count = (SELECT COUNT(*) FROM stars WHERE repo_id = ?1) WHERE id = ?1",
+            params![repo_id],
+        )?;
+        Ok(())
+    }
+
+    pub async fn unstar_repo(&self, user_id: i64, repo_id: i64) -> Result<bool, rusqlite::Error> {
+        let conn = self.conn.lock().await;
+        let affected = conn.execute(
+            "DELETE FROM stars WHERE user_id = ?1 AND repo_id = ?2",
+            params![user_id, repo_id],
+        )?;
+        conn.execute(
+            "UPDATE repositories SET stars_count = (SELECT COUNT(*) FROM stars WHERE repo_id = ?1) WHERE id = ?1",
+            params![repo_id],
+        )?;
+        Ok(affected > 0)
+    }
+
+    pub async fn is_starred(&self, user_id: i64, repo_id: i64) -> Result<bool, rusqlite::Error> {
+        let conn = self.conn.lock().await;
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM stars WHERE user_id = ?1 AND repo_id = ?2",
+            params![user_id, repo_id],
+            |row| row.get(0),
+        )?;
+        Ok(count > 0)
+    }
+
+    pub async fn list_stargazers(&self, repo_id: i64) -> Result<Vec<UserPublic>, rusqlite::Error> {
+        let conn = self.conn.lock().await;
+        let mut stmt = conn.prepare(
+            "SELECT u.id, u.username, u.bio, u.avatar_url, u.created_at
+             FROM stars s JOIN users u ON u.id = s.user_id
+             WHERE s.repo_id = ?1 ORDER BY s.created_at DESC"
+        )?;
+        let rows = stmt.query_map(params![repo_id], |row| {
+            Ok(UserPublic {
+                id: row.get(0)?,
+                username: row.get(1)?,
+                bio: row.get(2)?,
+                avatar_url: row.get(3)?,
+                created_at: row.get(4)?,
+            })
+        })?;
+        rows.collect()
+    }
+
+    pub async fn list_user_stars(&self, user_id: i64) -> Result<Vec<Repository>, rusqlite::Error> {
+        let conn = self.conn.lock().await;
+        let mut stmt = conn.prepare(
+            "SELECT r.id, r.user_id, r.name, r.description, r.is_private, r.default_branch, r.owner_type, r.org_id, r.created_at, r.updated_at, r.forked_from, r.stars_count, r.forks_count, r.watch_count
+             FROM stars s JOIN repositories r ON r.id = s.repo_id
+             WHERE s.user_id = ?1 ORDER BY s.created_at DESC"
+        )?;
+        let rows = stmt.query_map(params![user_id], map_repo_row)?;
+        rows.collect()
+    }
+
+    // ── v2.2 Watches ──
+
+    pub async fn watch_repo(&self, user_id: i64, repo_id: i64, watch_type: &str) -> Result<(), rusqlite::Error> {
+        let conn = self.conn.lock().await;
+        conn.execute(
+            "INSERT OR REPLACE INTO watches (user_id, repo_id, watch_type) VALUES (?1, ?2, ?3)",
+            params![user_id, repo_id, watch_type],
+        )?;
+        conn.execute(
+            "UPDATE repositories SET watch_count = (SELECT COUNT(*) FROM watches WHERE repo_id = ?1) WHERE id = ?1",
+            params![repo_id],
+        )?;
+        Ok(())
+    }
+
+    pub async fn unwatch_repo(&self, user_id: i64, repo_id: i64) -> Result<bool, rusqlite::Error> {
+        let conn = self.conn.lock().await;
+        let affected = conn.execute(
+            "DELETE FROM watches WHERE user_id = ?1 AND repo_id = ?2",
+            params![user_id, repo_id],
+        )?;
+        conn.execute(
+            "UPDATE repositories SET watch_count = (SELECT COUNT(*) FROM watches WHERE repo_id = ?1) WHERE id = ?1",
+            params![repo_id],
+        )?;
+        Ok(affected > 0)
+    }
+
+    pub async fn get_watch_type(&self, user_id: i64, repo_id: i64) -> Result<Option<String>, rusqlite::Error> {
+        let conn = self.conn.lock().await;
+        let result = conn.query_row(
+            "SELECT watch_type FROM watches WHERE user_id = ?1 AND repo_id = ?2",
+            params![user_id, repo_id],
+            |row| row.get(0),
+        );
+        match result {
+            Ok(t) => Ok(Some(t)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
 }
 
 fn map_repo_row(row: &rusqlite::Row) -> rusqlite::Result<Repository> {
@@ -1663,8 +1808,11 @@ fn map_repo_row(row: &rusqlite::Row) -> rusqlite::Result<Repository> {
         default_branch: row.get(5)?,
         owner_type: row.get(6)?,
         org_id: row.get(7)?,
-        forked_from: row.get(10)?,
         created_at: row.get(8)?,
         updated_at: row.get(9)?,
+        forked_from: row.get(10)?,
+        stars_count: row.get(11)?,
+        forks_count: row.get(12)?,
+        watch_count: row.get(13)?,
     })
 }

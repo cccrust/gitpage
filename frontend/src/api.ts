@@ -59,8 +59,12 @@ export interface Repo {
   default_branch: string
   owner_type?: string
   org_id?: number | null
+  stars_count: number
+  forks_count: number
+  watch_count: number
   created_at: string
   updated_at: string
+  forked_from?: number | null
 }
 
 export interface SearchResult {
@@ -496,6 +500,42 @@ export function getPRDiff(repoId: number, prNumber: number) {
 
 export function forkRepo(repoId: number, ownerName: string) {
   return request<{ repo: Repo }>('POST', `/api/repos/${repoId}/fork`, { owner_name: ownerName })
+}
+
+// ── Stars ──
+
+export function starRepo(repoId: number) {
+  return request<{ starred: boolean; stars_count: number }>('PUT', `/api/repos/${repoId}/star`)
+}
+
+export function unstarRepo(repoId: number) {
+  return request<{ starred: boolean; stars_count: number }>('DELETE', `/api/repos/${repoId}/star`)
+}
+
+export function getStarStatus(repoId: number) {
+  return request<{ starred: boolean }>('GET', `/api/repos/${repoId}/star`)
+}
+
+export function listStargazers(repoId: number) {
+  return request<{ stargazers: { id: number; username: string; avatar_url: string }[]; count: number }>('GET', `/api/repos/${repoId}/stars`)
+}
+
+export function listUserStars(username: string) {
+  return request<{ repos: Repo[] }>('GET', `/api/users/${username}/stars`)
+}
+
+// ── Watches ──
+
+export function watchRepo(repoId: number) {
+  return request<{ watching: boolean; watch_count: number }>('PUT', `/api/repos/${repoId}/watch`)
+}
+
+export function unwatchRepo(repoId: number) {
+  return request<{ watching: boolean; watch_count: number }>('DELETE', `/api/repos/${repoId}/watch`)
+}
+
+export function getWatchStatus(repoId: number) {
+  return request<{ watching: boolean; watch_type: string | null }>('GET', `/api/repos/${repoId}/watch`)
 }
 
 const TEXT_EXTENSIONS = new Set([

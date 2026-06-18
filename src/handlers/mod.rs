@@ -10,3 +10,4 @@ pub mod orgs;
 pub mod issues;
 pub mod pulls;
 pub mod settings;
+pub mod stars;
