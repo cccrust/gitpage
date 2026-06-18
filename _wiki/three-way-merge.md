@@ -297,3 +297,26 @@ Gitpage 目前遇到衝突時直接拒絕合併，要求使用者解決。未來
 - [libgit2 merge API](https://libgit2.org/docs/group/merge/)
 - `src/handlers/pulls.rs` — `merge_pr()`, `get_pr_diff()` 實作
 - `src/git/mod.rs` — libgit2 操作基礎
+
+## 圖表
+
+```mermaid
+graph TB
+    subgraph Base["Base (common ancestor)"]
+        B[file.txt: hello]
+    end
+    subgraph Ours["Ours (target branch)"]
+        O[file.txt: hello world]
+    end
+    subgraph Theirs["Theirs (source branch)"]
+        T[file.txt: hello universe]
+    end
+    subgraph Merge["3-Way Merge"]
+        M[Merge Result]
+        L1[Line 1: hello - unchanged]
+        L2[Line 2: world vs universe - CONFLICT]
+    end
+    B --> Merge
+    O --> Merge
+    T --> Merge
+```

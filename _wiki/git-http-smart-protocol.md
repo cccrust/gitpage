@@ -199,3 +199,20 @@ if method == "POST" && rest_path.contains("git-receive-pack") {
 - [git-http-backend man page](https://git-scm.com/docs/git-http-backend)
 - [Git Internals - Transfer Protocols](https://git-scm.com/book/en/v2/Git-Internals-Transfer-Protocols)
 - `src/git/mod.rs` — Gitpage 的 git http-backend 實作
+
+## 圖表
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant G as Gitpage Axum
+    participant H as git http-backend
+    C->>G: GET /git/user/repo/info/refs
+    G->>H: GIT_PROJECT_ROOT + PATH_INFO
+    H-->>G: pkt-line ref advertisement
+    G-->>C: refs + capabilities
+    C->>G: POST /git/user/repo/git-upload-pack
+    G->>H: POST body → stdin
+    H-->>G: packfile → stdout
+    G-->>C: packfile response
+```

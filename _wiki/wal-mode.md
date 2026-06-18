@@ -185,3 +185,26 @@ WAL 模式在系統崩潰後的恢復速度優於 journal 模式：
 - [SQLite Journal Modes](https://www.sqlite.org/pragma.html#pragma_journal_mode)
 - [tokio::sync::Mutex](https://docs.rs/tokio/latest/tokio/sync/struct.Mutex.html)
 - `src/db/mod.rs` — Database 連線初始化
+
+## 圖表
+
+```mermaid
+sequenceDiagram
+    participant W1 as Writer 1
+    participant W2 as Writer 2
+    participant R1 as Reader 1
+    participant R2 as Reader 2
+    participant DB as Database
+    participant WAL as WAL File
+    W1->>DB: BEGIN (lock)
+    W1->>WAL: Append changes
+    R1->>DB: SELECT (no lock)
+    DB->>WAL: Read uncommitted changes?
+    WAL-->>DB: No conflict
+    DB-->>R1: Result (from DB + WAL merged)
+    R2->>DB: SELECT (concurrent)
+    DB-->>R2: Result
+    W1->>DB: COMMIT (release)
+    W2->>DB: BEGIN (lock acquired)
+    Note over R1,R2: Readers never blocked by Writer
+```

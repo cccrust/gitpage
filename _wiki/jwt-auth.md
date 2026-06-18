@@ -266,3 +266,25 @@ pub async fn get_repo(
 - `src/auth/mod.rs` — JWT create/verify 實作
 - `src/app.rs` — auth_middleware 中間件
 - `frontend/src/api.ts` — 前端 Token 管理
+
+## 圖表
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant M as Auth Middleware
+    participant H as Handler
+    participant D as Database
+    C->>M: POST /api/auth/login {username, password}
+    M->>D: get_user_by_username
+    D-->>M: user + password_hash
+    M->>M: argon2::verify()
+    M->>M: create_token(user_id, username)
+    M-->>C: {token, user}
+    Note over C: Store token in localStorage
+    C->>M: GET /api/repos (Authorization: Bearer ...)
+    M->>M: verify_token()
+    M->>M: inject user_id into extensions
+    M->>H: forward request + extensions
+    H-->>C: response
+```

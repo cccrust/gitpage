@@ -278,3 +278,20 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_orgs_name ON organizations(name);
 - `src/db/mod.rs` — 使用者/組織/倉庫的資料庫查詢
 - `src/handlers/repos.rs` — 倉庫建立（擁有者選擇）
 - `src/db/models.rs` — Repository 資料結構（owner_type, org_id）
+
+## 圖表
+
+```mermaid
+flowchart TD
+    URL["URL: /:owner/:repo"] --> TRY_USER[Try user lookup]
+    TRY_USER --> USER_FOUND{User exists?}
+    USER_FOUND -->|Yes| REPO_BY_USER{Repo exists<br>under user?}
+    REPO_BY_USER -->|Yes| DONE_USER["Resolved: user-owned repo"]
+    REPO_BY_USER -->|No| TRY_ORG
+    USER_FOUND -->|No| TRY_ORG[Try org lookup]
+    TRY_ORG --> ORG_FOUND{Org exists?}
+    ORG_FOUND -->|Yes| REPO_BY_ORG{Repo exists<br>under org?}
+    REPO_BY_ORG -->|Yes| DONE_ORG["Resolved: org-owned repo"]
+    REPO_BY_ORG -->|No| NOT_FOUND["404: Repo not found"]
+    ORG_FOUND -->|No| NOT_FOUND
+```

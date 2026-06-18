@@ -276,3 +276,30 @@ fn test_aes_256_gcm() {
 - [RFC 5116 - AEAD](https://datatracker.ietf.org/doc/rfc5116/)
 - `src/auth/mod.rs` — `ENCRYPTION_KEY` 初始化
 - `src/handlers/settings.rs` — Secrets CRUD（加密/解密）
+
+## 圖表
+
+```mermaid
+flowchart LR
+    subgraph Encrypt["Encryption"]
+        PT1[Plaintext Secret] --> CIPHER[AES-256-GCM]
+        NONCE1[Random Nonce 12B] --> CIPHER
+        KEY1[256-bit Key] --> CIPHER
+        CIPHER --> CT[Ciphertext]
+        CIPHER --> TAG[Auth Tag]
+    end
+    subgraph Storage["Database"]
+        DB[(repo_secrets)]
+        CT --> DB
+        NONCE1 --> DB
+    end
+    subgraph Decrypt["Decryption"]
+        DB --> CT2[Ciphertext]
+        DB --> NONCE2[Nonce]
+        KEY2[256-bit Key] --> DECRYPT[AES-256-GCM]
+        CT2 --> DECRYPT
+        NONCE2 --> DECRYPT
+        DECRYPT --> PT2[Plaintext Secret]
+        DECRYPT -->|Tag mismatch| ERR[Error: Data corrupted]
+    end
+```

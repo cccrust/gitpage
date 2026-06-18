@@ -346,3 +346,31 @@ tokio::spawn(auto_deploy_app(state.clone(), repo_id));
 - `src/handlers/files.rs` — Gitpage 檔案管理器 API 實作
 - `src/git/mod.rs` — `commit_staging()` 和 `build_tree_from_dir()` 實作
 - `src/config.rs` — `staging_path()` 路徑計算
+
+## 圖表
+
+```mermaid
+flowchart LR
+    subgraph Staging["Staging Dir"]
+        F1[README.md]
+        F2[src/main.rs]
+        F3[img/logo.png]
+    end
+    subgraph Git["Bare Git Repo"]
+        OBJ[(Objects)]
+        REF[refs/heads/main]
+    end
+    subgraph TreeBuild["TreeBuilder"]
+        TB[TreeBuilder]
+        B1[blob: README.md]
+        B2[blob: main.rs]
+        B3[blob: logo.png]
+        T1[tree: src]
+        T2[tree: img]
+    end
+    Staging -->|fs::read_dir| TB
+    TB -->|write()| OBJ
+    TB -->|commit()| REF
+    OBJ -->|deploy_pages| PAGES[(Pages Dir)]
+    OBJ -->|deploy_app| APP[App Workspace]
+```

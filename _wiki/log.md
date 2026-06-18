@@ -25,3 +25,14 @@ Created initial wiki entries for Gitpage project covering:
 - OnceLock
 - tokio Mutex
 - AppError Pattern
+
+## [2026-06-18] Expansion — Frontend, Rendering, Cryptography, Indexing
+
+Added 6 new wiki entries covering frontend architecture, rendering infrastructure, and database optimization:
+
+- pulldown-cmark — CommonMark parser with KaTeX/Mermaid extensions
+- React 19 + TypeScript — Frontend architecture and state management patterns
+- Vite Proxy — Dev proxy between frontend (:5173) and backend (:8080)
+- Nonce Management — AES-256-GCM nonce generation, collision analysis, best practices
+- Revwalk — Git commit DAG traversal via libgit2
+- Partial Index — SQLite conditional unique indexes for dual-ownership model

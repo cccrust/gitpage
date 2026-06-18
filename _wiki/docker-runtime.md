@@ -329,3 +329,30 @@ ssh_port_range_end = 2299    # SSH 埠範圍結束
 - `src/handlers/auth.rs` — 註冊時建立容器
 - `src/handlers/apps.rs` — SSH 資訊 API
 - `src/main.rs` — Docker 初始化與 restore_apps_on_startup
+
+## 圖表
+
+```mermaid
+graph TB
+    subgraph Host["Host Machine"]
+        GS[Gitpage Server :8080]
+        DE[Docker Engine]
+        GS -->|bollard API| DE
+    end
+    subgraph C1["Container: gitpage-alice"]
+        S1[sleep infinity]
+        SSHD1[sshd :22]
+        A1[exec: npm start :4001]
+    end
+    subgraph C2["Container: gitpage-bob"]
+        S2[sleep infinity]
+        SSHD2[sshd :22]
+        A2[exec: cargo run :4002]
+    end
+    DE --> C1
+    DE --> C2
+    GS -->|proxy to| A1
+    GS -->|proxy to| A2
+    User1((User Alice)) -->|SSH :2222| SSHD1
+    User2((User Bob)) -->|SSH :2223| SSHD2
+```

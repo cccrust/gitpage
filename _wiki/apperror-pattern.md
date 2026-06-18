@@ -266,3 +266,28 @@ pub type HandlerResult = Result<Json<Value>, AppError>;
 - [thiserror crate](https://crates.io/crates/thiserror)（可簡化 AppError 實作）
 - `src/utils/errors.rs` — Gitpage 的 AppError 定義與 IntoResponse 實作
 - `src/db/mod.rs` — 資料庫操作中的錯誤轉換
+
+## 圖表
+
+```mermaid
+flowchart LR
+    Handler["API Handler"] -->|Result<T, AppError>| AXUM[Axum]
+    AXUM --> INTO_RESPONSE{AppError::into_response}
+    INTO_RESPONSE -->|NotFound| 404["HTTP 404: {error: msg}"]
+    INTO_RESPONSE -->|Unauthorized| 401["HTTP 401: {error: msg}"]
+    INTO_RESPONSE -->|BadRequest| 400["HTTP 400: {error: msg}"]
+    INTO_RESPONSE -->|Conflict| 409["HTTP 409: {error: msg}"]
+    INTO_RESPONSE -->|Internal| 500["HTTP 500: {error: msg}"]
+    subgraph Sources["Error Sources"]
+        DB[(rusqlite Error)]
+        GIT[(git2 Error)]
+        IO[std::io Error]
+        JWT[jsonwebtoken Error]
+        ARG[argon2 Error]
+    end
+    DB -->|From trait| AppError
+    GIT -->|From trait| AppError
+    IO -->|From trait| AppError
+    JWT -->|From trait| AppError
+    ARG -->|From trait| AppError
+```

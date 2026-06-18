@@ -236,3 +236,43 @@ Rust 繫結保持了與 C API 的 1:1 對應，但提供：
 - `src/git/mod.rs` — Gitpage 的 libgit2 操作封裝
 - `src/handlers/pulls.rs` — 3-way merge 與 diff 實作
 - `src/handlers/files.rs` — staging commit 實作
+
+## 圖表
+
+```mermaid
+classDiagram
+    class Repository {
+        +open_bare(path)
+        +find_commit(oid)
+        +find_tree(oid)
+        +find_blob(oid)
+        +revwalk()
+    }
+    class Commit {
+        +tree() Tree
+        +parent() Commit
+        +author() Signature
+        +message() String
+    }
+    class Tree {
+        +iter() TreeEntry
+        +get_path(path)
+    }
+    class Blob {
+        +content() bytes
+    }
+    class TreeEntry {
+        +name() String
+        +kind() ObjectType
+        +id() Oid
+        +to_blob() Blob
+        +to_tree() Tree
+    }
+    Repository --> Commit
+    Repository --> Tree
+    Repository --> Blob
+    Commit --> Tree : points to
+    Tree --> TreeEntry : contains
+    TreeEntry --> Blob : file
+    TreeEntry --> Tree : subdirectory
+```

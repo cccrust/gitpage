@@ -328,3 +328,23 @@ pub struct DeployLog {
 - `src/handlers/apps.rs` — App config CRUD + do_deploy 手動觸發
 - `src/handlers/pages.rs` — Pages config CRUD + deploy
 - `src/db/models.rs` — `DeployLog` 資料結構
+
+## 圖表
+
+```mermaid
+flowchart LR
+    A[Git Push] --> B{Receive Pack}
+    B -->|Success| C[auto_deploy_pages]
+    B -->|Success| D[auto_deploy_app]
+    C --> E[checkout_source]
+    D --> E
+    E --> F{Project Type?}
+    F -->|Node| G[npm install]
+    F -->|Rust| H[cargo build]
+    G --> I[allocate_port]
+    H --> I
+    I --> J[start_app]
+    J --> K[health_check]
+    K -->|OK| L[update DB status]
+    K -->|Fail| M[log error]
+```
