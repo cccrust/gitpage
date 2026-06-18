@@ -113,6 +113,8 @@ pub struct DockerConfig {
     pub network: String,
     pub memory_limit: String,
     pub cpu_shares: i64,
+    pub ssh_port_range_start: u16,
+    pub ssh_port_range_end: u16,
 }
 
 impl Default for DockerConfig {
@@ -122,6 +124,8 @@ impl Default for DockerConfig {
             network: "bridge".to_string(),
             memory_limit: "1g".to_string(),
             cpu_shares: 512,
+            ssh_port_range_start: 22001,
+            ssh_port_range_end: 22999,
         }
     }
 }

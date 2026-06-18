@@ -74,6 +74,8 @@ mode = "docker"
 [docker]
 base_image = "gitpage-dev-base:latest"
 network = "bridge"
+ssh_port_range_start = 22500
+ssh_port_range_end = 22599
 EOF
 
 echo ""
@@ -113,7 +115,26 @@ TK=$(echo "$RESP" | python3 -c 'import sys,json;print(json.load(sys.stdin)["toke
 echo "TOKEN=${TK:0:20}..."
 
 echo ""
-echo "=== 2. Verify per-user container was created ==="
+echo "=== 2a. Verify SSH port is published ==="
+SSH_PORT=$(docker inspect gitpage-test --format '{{range $p, $c := .NetworkSettings.Ports}}{{$p}}{{"\t"}}{{range $c}}{{.HostPort}}{{"\n"}}{{end}}{{end}}' | awk '/^22\/tcp/{print $2}')
+echo "SSH host port: $SSH_PORT"
+if [ -n "$SSH_PORT" ]; then
+    echo "PASS: SSH port 22/tcp → host $SSH_PORT"
+else
+    echo "FAIL: No SSH port published"
+    docker port gitpage-test
+    exit 1
+fi
+# Verify port is in the configured range
+if [ "$SSH_PORT" -ge 22500 ] 2>/dev/null && [ "$SSH_PORT" -le 22599 ] 2>/dev/null; then
+    echo "PASS: SSH port $SSH_PORT is in configured range (22500-22599)"
+else
+    echo "FAIL: SSH port $SSH_PORT outside range 22500-22599"
+    exit 1
+fi
+
+echo ""
+echo "=== 2b. Verify different users get different SSH ports ==="
 sleep 3
 docker ps --filter "name=gitpage-test" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
 STATUS=$(docker inspect gitpage-test --format '{{.State.Status}}' 2>/dev/null)
@@ -216,7 +237,7 @@ docker rm -f gitpage-test 2>/dev/null || true
 docker volume rm gitpage-home-test 2>/dev/null || true
 
 echo ""
-echo "=== 12. Register second user (verify fresh container) ==="
+echo "=== 12. Register second user (verify fresh container with different SSH port) ==="
 RESP2=$(curl -s -X POST "http://localhost:$TEST_PORT/api/auth/register" \
   -H "Content-Type: application/json" \
   -d '{"username":"alice","email":"alice@test.com","password":"pass123"}')
@@ -227,6 +248,15 @@ if [ $? -eq 0 ]; then
     echo "PASS: Alice container created"
 else
     echo "FAIL: Alice container not running"
+    exit 1
+fi
+
+ALICE_SSH_PORT=$(docker inspect gitpage-alice --format '{{range $p, $c := .NetworkSettings.Ports}}{{$p}}{{"\t"}}{{range $c}}{{.HostPort}}{{"\n"}}{{end}}{{end}}' | awk '/^22\/tcp/{print $2}')
+echo "Alice SSH port: $ALICE_SSH_PORT"
+if [ "$ALICE_SSH_PORT" != "$SSH_PORT" ] && [ -n "$ALICE_SSH_PORT" ]; then
+    echo "PASS: Alice SSH port ($ALICE_SSH_PORT) differs from test user ($SSH_PORT)"
+else
+    echo "FAIL: Alice SSH port same as test user or missing"
     exit 1
 fi
 

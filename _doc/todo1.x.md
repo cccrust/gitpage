@@ -27,29 +27,31 @@ v1.0 ─── v1.1 ─── v1.2 ─── v1.3 ─── v1.4 …
 
 ### 未實作（待 v1.2 或之後）
 
-- [ ] `gitpage-agent` — 容器內常駐 agent，接收宿主機 deploy 指令
-- [ ] Git push 自動觸發容器內建置
+- [x] `gitpage-agent` — 容器內常駐 agent → 改用 Docker exec 直接執行指令（`exec_build`, `exec_start_detached`）
+- [x] Git push 自動觸發容器內建置 → `deploy.rs` 整合 exec 呼叫
 - [ ] SSH host key 持久化（volume 保存 `/etc/ssh/ssh_host_*`）
-- [ ] 瀏覽器內 terminal（xterm.js + websocket）
 
 ---
 
-## v1.2 — 每人獨立容器
+## v1.2 — 每人獨立容器 ✓
 
 ### 容器管理
 
-- [ ] `src/docker.rs` — Docker API 封裝（bollard crate）
-  - `ensure_user_container(user)` — 若容器不存在則建立（使用 `gitpage-dev-base`）
-  - `exec_deploy(user, repo)` — 執行 agent deploy
-  - `exec_stop(user, repo)` — 停止 app
+- [x] `src/docker.rs` — Docker API 封裝（bollard crate 0.21）
+  - `ensure_user_container(user)` — 若容器不存在則建立（使用 `gitpage-dev-base`），含 named volume、apps bind mount、SSH port 暴露
+  - `exec_build(user, repo, cmd)` — 容器內執行建置
+  - `exec_start_detached(user, repo, cmd, port, env)` — 容器內背景啟動 app
+  - `exec_check_status(user, repo, port)` — 查詢 app 狀態（lsof）
+  - `exec_stop_app(user, port)` — 停止 app
   - `get_container_ip(user)` — 查詢容器 IP
-- [ ] 使用者註冊時 → `ensure_user_container()`
-- [ ] Git push 後 → `exec_deploy()`
+  - `remove_container(user)` / `list_user_containers()`
+- [x] 使用者註冊時 → `ensure_user_container()`（`handlers/auth.rs`）
+- [x] Git push 後 → `exec_build()` / `exec_start_detached()`（`deploy.rs`）
 
 ### App Proxy 改造
 
-- [ ] `/app/{user}/{repo}/*` → 改成代理到容器 IP，不再走宿主機 subprocess
-- [ ] 移除現有 `deploy.rs` subprocess 管理（或保留為 fallback）
+- [x] `/app/{user}/{repo}/*` → 改成代理到容器 IP，不再走宿主機 subprocess
+- [x] `deploy.rs` 保留為 `mode = "process"` 的 fallback
 
 ### SSH 隔離
 
@@ -59,14 +61,15 @@ v1.0 ─── v1.1 ─── v1.2 ─── v1.3 ─── v1.4 …
 
 ### 儲存
 
-- [ ] named volume：`gitpage-{user}-home` → `/home/{user}`（刪容器保留資料）
-- [ ] 唯讀掛載 `data/repos` → `/repos`
+- [x] named volume：`gitpage-home-{user}` → `/home/{user}`（刪容器保留資料）
+- [x] bind mount `data/apps/{user}` → `/workspace`（deploy 工作區）
 
 ### 向後相容
 
-- [ ] `mode = "process"` 維持現有 subprocess 行為
-- [ ] Docker 不可用時自動退回 process 模式
-- [ ] 遷移工具：將現有 subprocess app 轉移到容器
+- [x] `mode = "process"` 維持現有 subprocess 行為
+- [x] `mode = "docker"` 使用容器 exec 模式
+- [x] Docker 不可用時自動退回 process 模式
+- [x] `test.sh`（非 Docker）不受影響
 
 ### 設定
 
@@ -78,9 +81,15 @@ mode = "docker"            # "process" 向後相容
 memory_limit = "1g"
 cpu_shares = 512
 base_image = "gitpage-dev-base:latest"
-ssh_port_start = 22001
-ssh_port_end = 22999
+network = "bridge"
 ```
+
+### 基礎建設整頓
+
+- [x] `config.toml`: `storage.base_path` 改為 `"data"`（原為 `"data/repos"`），路徑方法統一使用 base_path
+- [x] `src/config.rs`: `repo_path`/`staging_path`/`app_workspace_dir` 路徑一致化
+- [x] `src/main.rs`: `--config` CLI 引數、目錄建立邏輯更新
+- [x] `test_docker_mode.sh`: Docker runtime mode 整合測試
 
 ---
 

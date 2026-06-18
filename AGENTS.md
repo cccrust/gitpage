@@ -34,7 +34,7 @@ Sections: `[server]`, `[database]`, `[storage]`, `[jwt]`, `[ssh]`, `[cors]`, `[u
 - Upload limit: `max_file_size` (default 10MB)
 - App port range: `port_range_start` / `port_range_end`
 - Runtime mode: `[runtime] mode = "process"` (default) or `"docker"`
-- Docker config: `[docker] base_image`, `network`, `memory_limit`, `cpu_shares`
+- Docker config: `[docker] base_image`, `network`, `memory_limit`, `cpu_shares`, `ssh_port_range_start`, `ssh_port_range_end`
 
 ## Disk Layout
 
@@ -122,13 +122,13 @@ Two modes fully supported:
 | No Docker | `cargo build` | `cargo run` / `./run.sh` | `./test.sh` |
 | Docker | `docker build` | `./run_docker.sh` | `./test_docker.sh` |
 
-Docker **runtime mode** (`config.toml`: `[runtime] mode = "docker"`) creates per-user containers on registration via `ensure_user_container()` in `docker.rs`. Containers run `sleep infinity` and expose SSH port 22. Build/start/stop of user apps is delegated to container exec commands.
+Docker **runtime mode** (`config.toml`: `[runtime] mode = "docker"`) creates per-user containers on registration via `ensure_user_container()` in `docker.rs`. Containers run `sleep infinity` and expose SSH port 22 mapped to a fixed host port from `ssh_port_range_start..=ssh_port_range_end`. Build/start/stop of user apps is delegated to container exec commands.
 
 - `Dockerfile` — multi-stage: Node → Rust → Debian slim runtime
 - `Dockerfile.base` — dev tooling image (Python, Rust, Node.js, uv, opencode)
 - `run_docker.sh` — builds image, mounts `data/` volume, runs on `:8080` + SSH on `:2222`
 - `test_docker.sh` — builds image, starts container on `:18080`, runs full test suite
-- `test_docker_mode.sh` — tests per-user container creation, named volume, staging bind, container exec build/start
+- `test_docker_mode.sh` — tests per-user container creation, named volume, staging bind, container exec build/start, **SSH port publishing**
 - `entrypoint.sh` — container entrypoint: generates SSH host keys, starts sshd, then gitpage
 - `.dockerignore` — excludes build artifacts, git history, scripts
 
@@ -166,4 +166,5 @@ frontend/vite.config.ts— Dev proxy: /api, /git, /pages → :8080
 - SSH: `~/.ssh/authorized_keys` and `~/.ssh/gitpage-shell` are auto-managed — don't edit manually
 - libgit2 errors are wrapped as `AppError::Internal` in Chinese
 - Docker runtime mode containers run `sleep infinity` — must keep running for `docker exec` to work
+- SSH host port per user is allocated from `[docker] ssh_port_range_start..=ssh_port_range_end`, tracked in-memory; on restart, port map is rebuilt from running containers
 - Config path methods (`staging_path`, `app_workspace_dir`) derive from `storage.base_path`; `repo_path` and `pages_dir` append `/repos`

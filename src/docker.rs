@@ -8,6 +8,7 @@ use bollard::query_parameters::{
 use bollard::Docker;
 use futures_util::StreamExt;
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 type PortMap = HashMap<String, Option<Vec<PortBinding>>>;
 
@@ -18,6 +19,8 @@ pub struct DockerManager {
     pub network: String,
     pub staging_root: String,
     pub apps_root: String,
+    pub ssh_port_range: (u16, u16),
+    pub port_allocations: Arc<Mutex<HashMap<String, u16>>>,
 }
 
 fn name_filter(name: &str) -> HashMap<String, Vec<String>> {
@@ -34,6 +37,7 @@ impl DockerManager {
         let base = std::path::Path::new(&cfg.storage.base_path);
         let staging_root = base.join("staging").to_string_lossy().to_string();
         let apps_root = base.join("apps").to_string_lossy().to_string();
+        let ssh_port_range = (cfg.docker.ssh_port_range_start, cfg.docker.ssh_port_range_end);
 
         let _: Vec<_> = docker
             .create_image(
@@ -48,13 +52,106 @@ impl DockerManager {
             .collect::<Vec<_>>()
             .await;
 
+        let port_allocations = Arc::new(Mutex::new(HashMap::new()));
+
+        // Rebuild port allocations from existing gitpage containers
+        if let Ok(existing) = Self::list_running_containers(&docker).await {
+            for c in &existing {
+                let name = c.names.as_ref().and_then(|n| n.first().cloned()).unwrap_or_default();
+                let username = name.trim_start_matches('/').strip_prefix("gitpage-").unwrap_or("").to_string();
+                if username.is_empty() {
+                    continue;
+                }
+                if let Some(ports) = &c.ports {
+                    for p in ports {
+                        if p.private_port == 22 {
+                            if let Some(host_port) = p.public_port {
+                                port_allocations.lock().unwrap().insert(username, host_port);
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
         Ok(Self {
             docker,
             base_image,
             network,
             staging_root,
             apps_root,
+            ssh_port_range,
+            port_allocations,
         })
+    }
+
+    async fn list_running_containers(docker: &Docker) -> Result<Vec<bollard::models::ContainerSummary>, String> {
+        docker
+            .list_containers(Some(ListContainersOptions {
+                all: false,
+                filters: Some(HashMap::from([(
+                    "name".to_string(),
+                    vec!["gitpage-".to_string()],
+                )])),
+                ..Default::default()
+            }))
+            .await
+            .map_err(|e| format!("list containers: {}", e))
+    }
+
+    pub async fn get_user_ssh_port(&self, username: &str) -> Result<u16, String> {
+        if let Some(port) = self.port_allocations.lock().unwrap().get(username).copied() {
+            return Ok(port);
+        }
+        // Fallback: inspect running container
+        let name = format!("gitpage-{}", username);
+        let containers = self
+            .docker
+            .list_containers(Some(ListContainersOptions {
+                all: false,
+                filters: Some(name_filter(&name)),
+                ..Default::default()
+            }))
+            .await
+            .map_err(|e| format!("list containers: {}", e))?;
+
+        if let Some(c) = containers.first() {
+            if let Some(ports) = &c.ports {
+                for p in ports {
+                    if p.private_port == 22 {
+                        if let Some(host_port) = p.public_port {
+                            self.port_allocations.lock().unwrap().insert(username.to_string(), host_port);
+                            return Ok(host_port);
+                        }
+                    }
+                }
+            }
+        }
+        Err(format!("no SSH port found for {}", username))
+    }
+
+    fn find_free_port(&self, username: &str) -> u16 {
+        let mut used: std::collections::HashSet<u16> = self
+            .port_allocations
+            .lock()
+            .unwrap()
+            .values()
+            .copied()
+            .collect();
+        // Remove own allocation so same user can re-get their port
+        if let Some(my_port) = self.port_allocations.lock().unwrap().get(username).copied() {
+            used.remove(&my_port);
+        }
+        let (start, end) = self.ssh_port_range;
+        for port in start..=end {
+            if !used.contains(&port) {
+                return port;
+            }
+        }
+        // If range exhausted, start from beginning and find first that's not used by other users
+        // (meaning current user might get a new one if theirs was lost)
+        start
     }
 
     pub async fn ensure_user_container(&self, username: &str) -> Result<(), String> {
@@ -76,6 +173,17 @@ impl DockerManager {
             let state = existing.state.map(|s| format!("{:?}", s)).unwrap_or_default();
             let status = existing.status.as_deref().unwrap_or("");
             if state == "RUNNING" || status.contains("Up") {
+                // Record SSH port from existing container
+                if let Some(ports) = &existing.ports {
+                    for p in ports {
+                        if p.private_port == 22 {
+                            if let Some(host_port) = p.public_port {
+                                self.port_allocations.lock().unwrap().insert(username.to_string(), host_port);
+                            }
+                            break;
+                        }
+                    }
+                }
                 return Ok(());
             }
             self.docker
@@ -85,6 +193,14 @@ impl DockerManager {
             tracing::info!("Started existing container {}", name);
             return Ok(());
         }
+
+        let ssh_port = self.find_free_port(username);
+        let port_binding = PortBinding {
+            host_ip: Some("0.0.0.0".to_string()),
+            host_port: Some(ssh_port.to_string()),
+        };
+        let mut port_map: PortMap = HashMap::new();
+        port_map.insert("22/tcp".into(), Some(vec![port_binding]));
 
         let cfg = ContainerCreateBody {
             image: Some(self.base_image.clone()),
@@ -98,11 +214,7 @@ impl DockerManager {
                     format!("gitpage-home-{0}:/home/{0}", username),
                     format!("{}:/workspace", apps_host_str),
                 ]),
-                port_bindings: Some({
-                    let mut m: PortMap = HashMap::new();
-                    m.insert("22/tcp".into(), None);
-                    m
-                }),
+                port_bindings: Some(port_map),
                 ..Default::default()
             }),
             ..Default::default()
@@ -124,7 +236,8 @@ impl DockerManager {
             .await
             .map_err(|e| format!("start {}: {}", name, e))?;
 
-        tracing::info!("Created container {}", name);
+        self.port_allocations.lock().unwrap().insert(username.to_string(), ssh_port);
+        tracing::info!("Created container {} with SSH port {}", name, ssh_port);
         Ok(())
     }
 

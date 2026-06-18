@@ -24,3 +24,14 @@ max_file_size = 10485760
 [apps]
 port_range_start = 4000
 port_range_end = 65535
+
+[runtime]
+mode = "process"
+
+[docker]
+base_image = "gitpage-dev-base:latest"
+network = "bridge"
+memory_limit = "1g"
+cpu_shares = 512
+ssh_port_range_start = 22001
+ssh_port_range_end = 22999
