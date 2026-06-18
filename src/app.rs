@@ -99,6 +99,7 @@ pub fn create_app(state: AppState) -> Router {
         .route("/api/auth/login", post(handlers::auth::login))
         .route("/api/auth/me", get(handlers::auth::me))
         .route("/api/auth/password", put(handlers::auth::change_password))
+        .route("/api/user/ssh-info", get(handlers::auth::ssh_info))
         .route("/api/repos", get(handlers::repos::list_user_repos))
         .route("/api/repos", post(handlers::repos::create_repo))
         .route("/api/repos/:id", get(handlers::repos::get_repo_by_id))

@@ -22,6 +22,7 @@ import OrgCreate from './pages/OrgCreate'
 import OrgDetail from './pages/OrgDetail'
 import OrgSettings from './pages/OrgSettings'
 import OrgMembers from './pages/OrgMembers'
+import DockerStatusPage from './pages/DockerStatusPage'
 
 export default function App() {
   return (
@@ -51,6 +52,7 @@ export default function App() {
           <Route path="/org/:name/members" element={<OrgMembers />} />
           <Route path="/org/:name/settings" element={<OrgSettings />} />
           <Route path="/org/:name" element={<OrgDetail />} />
+          <Route path="/docker-status" element={<DockerStatusPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Layout>

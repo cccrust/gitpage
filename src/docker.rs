@@ -17,10 +17,12 @@ pub struct DockerManager {
     pub docker: Docker,
     pub base_image: String,
     pub network: String,
-    pub staging_root: String,
     pub apps_root: String,
     pub ssh_port_range: (u16, u16),
+    pub memory_limit: String,
+    pub cpu_shares: i64,
     pub port_allocations: Arc<Mutex<HashMap<String, u16>>>,
+    pub password_allocations: Arc<Mutex<HashMap<String, String>>>,
 }
 
 fn name_filter(name: &str) -> HashMap<String, Vec<String>> {
@@ -35,9 +37,10 @@ impl DockerManager {
         let base_image = cfg.docker.base_image.clone();
         let network = cfg.docker.network.clone();
         let base = std::path::Path::new(&cfg.storage.base_path);
-        let staging_root = base.join("staging").to_string_lossy().to_string();
         let apps_root = base.join("apps").to_string_lossy().to_string();
         let ssh_port_range = (cfg.docker.ssh_port_range_start, cfg.docker.ssh_port_range_end);
+        let memory_limit = cfg.docker.memory_limit.clone();
+        let cpu_shares = cfg.docker.cpu_shares;
 
         let _: Vec<_> = docker
             .create_image(
@@ -53,6 +56,7 @@ impl DockerManager {
             .await;
 
         let port_allocations = Arc::new(Mutex::new(HashMap::new()));
+        let password_allocations = Arc::new(Mutex::new(HashMap::new()));
 
         // Rebuild port allocations from existing gitpage containers
         if let Ok(existing) = Self::list_running_containers(&docker).await {
@@ -66,7 +70,7 @@ impl DockerManager {
                     for p in ports {
                         if p.private_port == 22 {
                             if let Some(host_port) = p.public_port {
-                                port_allocations.lock().unwrap().insert(username, host_port);
+                                port_allocations.lock().unwrap().insert(username.clone(), host_port);
                             }
                             break;
                         }
@@ -79,10 +83,12 @@ impl DockerManager {
             docker,
             base_image,
             network,
-            staging_root,
             apps_root,
             ssh_port_range,
+            memory_limit,
+            cpu_shares,
             port_allocations,
+            password_allocations,
         })
     }
 
@@ -100,35 +106,23 @@ impl DockerManager {
             .map_err(|e| format!("list containers: {}", e))
     }
 
-    pub async fn get_user_ssh_port(&self, username: &str) -> Result<u16, String> {
-        if let Some(port) = self.port_allocations.lock().unwrap().get(username).copied() {
-            return Ok(port);
-        }
-        // Fallback: inspect running container
-        let name = format!("gitpage-{}", username);
-        let containers = self
-            .docker
-            .list_containers(Some(ListContainersOptions {
-                all: false,
-                filters: Some(name_filter(&name)),
-                ..Default::default()
-            }))
-            .await
-            .map_err(|e| format!("list containers: {}", e))?;
+    pub fn get_user_ssh_port(&self, username: &str) -> Result<u16, String> {
+        self.port_allocations.lock().unwrap().get(username).copied()
+            .ok_or_else(|| format!("no SSH port for {}", username))
+    }
 
-        if let Some(c) = containers.first() {
-            if let Some(ports) = &c.ports {
-                for p in ports {
-                    if p.private_port == 22 {
-                        if let Some(host_port) = p.public_port {
-                            self.port_allocations.lock().unwrap().insert(username.to_string(), host_port);
-                            return Ok(host_port);
-                        }
-                    }
-                }
-            }
-        }
-        Err(format!("no SSH port found for {}", username))
+    pub fn get_user_ssh_password(&self, username: &str) -> Option<String> {
+        self.password_allocations.lock().unwrap().get(username).cloned()
+    }
+
+    fn generate_password(len: usize) -> String {
+        use rand::Rng;
+        const CHARS: &[u8] = b"abcdefghijklmnopqrstuvwxyz0123456789";
+        let mut rng = rand::rngs::OsRng;
+        (0..len).map(|_| {
+            let idx = rng.gen_range(0..CHARS.len());
+            CHARS[idx] as char
+        }).collect()
     }
 
     fn find_free_port(&self, username: &str) -> u16 {
@@ -195,6 +189,8 @@ impl DockerManager {
         }
 
         let ssh_port = self.find_free_port(username);
+        let pass = Self::generate_password(12);
+        self.password_allocations.lock().unwrap().insert(username.to_string(), pass.clone());
         let port_binding = PortBinding {
             host_ip: Some("0.0.0.0".to_string()),
             host_port: Some(ssh_port.to_string()),
@@ -202,11 +198,18 @@ impl DockerManager {
         let mut port_map: PortMap = HashMap::new();
         port_map.insert("22/tcp".into(), Some(vec![port_binding]));
 
+        let cmd = format!(
+            "useradd -m {u} 2>/dev/null; echo '{u}:{p}' | chpasswd; mkdir -p /run/sshd; /usr/sbin/sshd -D & sleep infinity",
+            u = username, p = pass
+        );
+
+        let memory_bytes = parse_memory_limit(&self.memory_limit);
+
         let cfg = ContainerCreateBody {
             image: Some(self.base_image.clone()),
             hostname: Some(username.to_string()),
             env: Some(vec![format!("USERNAME={}", username)]),
-            cmd: Some(vec!["sleep".to_string(), "infinity".to_string()]),
+            cmd: Some(vec!["sh".to_string(), "-c".to_string(), cmd]),
             exposed_ports: Some(vec!["22/tcp".to_string()]),
             host_config: Some(HostConfig {
                 network_mode: Some(self.network.clone()),
@@ -215,6 +218,8 @@ impl DockerManager {
                     format!("{}:/workspace", apps_host_str),
                 ]),
                 port_bindings: Some(port_map),
+                memory: memory_bytes,
+                cpu_shares: Some(self.cpu_shares),
                 ..Default::default()
             }),
             ..Default::default()
@@ -237,7 +242,7 @@ impl DockerManager {
             .map_err(|e| format!("start {}: {}", name, e))?;
 
         self.port_allocations.lock().unwrap().insert(username.to_string(), ssh_port);
-        tracing::info!("Created container {} with SSH port {}", name, ssh_port);
+        tracing::info!("Created container {} with SSH port {}, password: {}", name, ssh_port, pass);
         Ok(())
     }
 
@@ -382,15 +387,24 @@ impl DockerManager {
         repo_name: &str,
         port: u16,
     ) -> Result<bool, String> {
-        let check = self.exec_command(
-            username,
-            &[
-                "sh", "-c",
-                &format!("lsof -i :{} -t 2>/dev/null | head -1", port),
-            ],
-            Some(&format!("/workspace/{}/source", repo_name)),
-        ).await?;
-        Ok(!check.trim().is_empty())
+        let workdir = format!("/workspace/{}/source", repo_name);
+        for i in 0..10 {
+            let check = self.exec_command(
+                username,
+                &[
+                    "sh", "-c",
+                    &format!("lsof -i :{} -t 2>/dev/null | head -1", port),
+                ],
+                Some(&workdir),
+            ).await?;
+            if !check.trim().is_empty() {
+                return Ok(true);
+            }
+            if i < 9 {
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            }
+        }
+        Ok(false)
     }
 
     pub async fn exec_stop_app(
@@ -422,29 +436,18 @@ impl DockerManager {
             .await
             .map_err(|e| format!("remove container: {}", e))
     }
+}
 
-    #[allow(dead_code)]
-    pub async fn list_user_containers(&self) -> Result<Vec<String>, String> {
-        let containers = self
-            .docker
-            .list_containers(Some(ListContainersOptions {
-                all: true,
-                filters: Some(HashMap::from([(
-                    "name".to_string(),
-                    vec!["gitpage-".to_string()],
-                )])),
-                ..Default::default()
-            }))
-            .await
-            .map_err(|e| format!("list containers: {}", e))?;
-
-        Ok(containers
-            .iter()
-            .filter_map(|c| {
-                c.names
-                    .as_ref()
-                    .and_then(|names| names.first().cloned())
-            })
-            .collect())
-    }
+fn parse_memory_limit(s: &str) -> Option<i64> {
+    let s = s.trim().to_lowercase();
+    let (num, unit) = if s.ends_with('g') {
+        (s.trim_end_matches('g'), 1024i64 * 1024 * 1024)
+    } else if s.ends_with('m') {
+        (s.trim_end_matches('m'), 1024i64 * 1024)
+    } else if s.ends_with('k') {
+        (s.trim_end_matches('k'), 1024)
+    } else {
+        (s.as_str(), 1)
+    };
+    num.parse::<i64>().ok().map(|v| v * unit)
 }

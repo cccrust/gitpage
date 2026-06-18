@@ -94,8 +94,14 @@ fi
         None
     };
 
-    // Restore running apps on startup
-    restore_apps_on_startup(&db, &app_manager, docker.as_ref(), &cfg).await;
+    // Restore running apps on startup (background — don't block server start)
+    let restore_db = db.clone();
+    let restore_app_manager = app_manager.clone();
+    let restore_docker = docker.clone();
+    let restore_cfg = cfg.clone();
+    tokio::spawn(async move {
+        restore_apps_on_startup(&restore_db, &restore_app_manager, restore_docker.as_ref(), &restore_cfg).await;
+    });
 
     let state = app::AppState {
         db,

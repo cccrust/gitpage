@@ -170,3 +170,25 @@ pub async fn update_profile(
 
     Ok(Json(json!({ "success": true })))
 }
+
+pub async fn ssh_info(
+    State(state): State<AppState>,
+    axum::Extension(user_id): axum::Extension<i64>,
+) -> Result<Json<Value>, AppError> {
+    let user = state.db.find_user_by_id(user_id).await?
+        .ok_or_else(|| AppError::NotFound("使用者不存在".into()))?;
+
+    let mut resp = json!({
+        "mode": state.config.runtime.mode,
+    });
+
+    if let Some(docker) = &state.docker {
+        let port = docker.get_user_ssh_port(&user.username);
+        let password = docker.get_user_ssh_password(&user.username);
+        resp["ssh_port"] = serde_json::Value::from(port.ok());
+        resp["ssh_password"] = serde_json::Value::from(password);
+        resp["container"] = serde_json::Value::from(format!("gitpage-{}", user.username));
+    }
+
+    Ok(Json(resp))
+}

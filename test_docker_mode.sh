@@ -250,19 +250,26 @@ curl -sf "http://localhost:$TEST_PORT/" > /dev/null 2>&1 || {
 echo "Server restarted successfully"
 
 echo ""
-echo "=== 11a. Check app status after restart ==="
-curl -sf "http://localhost:$TEST_PORT/api/apps/$REPO_ID" \
-  -H "Authorization: Bearer $TK" | python3 -c "
+echo "=== 11a. Check app status after restart (wait for background restore) ==="
+for i in 1 2 3 4 5; do
+  STATUS=$(curl -sf "http://localhost:$TEST_PORT/api/apps/$REPO_ID" -H "Authorization: Bearer $TK" 2>/dev/null | python3 -c "import sys,json;print(json.load(sys.stdin).get('status',''))" 2>/dev/null)
+  if [ "$STATUS" = "running" ]; then
+    echo "Status: $STATUS"
+    echo "PASS: app restored after restart"
+    break
+  fi
+  sleep 1
+done
+if [ "$STATUS" != "running" ]; then
+  curl -sf "http://localhost:$TEST_PORT/api/apps/$REPO_ID" -H "Authorization: Bearer $TK" | python3 -c "
 import sys,json
 d = json.load(sys.stdin)
 print('Status:', d.get('status'))
 print('Port:', d.get('port'))
-if d.get('status') == 'running':
-    print('PASS: app restored after restart')
-else:
-    print('FAIL: app not running after restart')
-    sys.exit(1)
+print('FAIL: app not running after restart')
 "
+  exit 1
+fi
 
 echo ""
 echo "=== 11b. Check app is accessible via proxy ==="

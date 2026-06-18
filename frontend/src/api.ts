@@ -413,3 +413,14 @@ export function changePassword(currentPassword: string, newPassword: string) {
 export function updateProfile(username: string, bio: string, avatarUrl: string) {
   return request<{ success: boolean }>('PUT', `/api/users/${username}/profile`, { bio, avatar_url: avatarUrl })
 }
+
+export interface SshInfo {
+  mode: string
+  ssh_port?: number
+  ssh_password?: string
+  container?: string
+}
+
+export function getSshInfo() {
+  return request<SshInfo>('GET', '/api/user/ssh-info')
+}

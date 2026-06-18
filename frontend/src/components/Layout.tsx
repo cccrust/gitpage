@@ -22,6 +22,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             <>
               <Link to="/" className="nav-link">Repos</Link>
               <Link to="/orgs" className="nav-link">Orgs</Link>
+              <Link to="/docker-status" className="nav-link">Docker</Link>
               <Link to="/settings" className="nav-link">Settings</Link>
               <a href="#" className="nav-link" onClick={doLogout}>Logout</a>
             </>
