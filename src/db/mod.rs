@@ -1816,3 +1816,498 @@ fn map_repo_row(row: &rusqlite::Row) -> rusqlite::Result<Repository> {
         watch_count: row.get(13)?,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    async fn setup_db() -> Database {
+        let db = Database::new(":memory:").unwrap();
+        db.run_migrations().await.unwrap();
+        db
+    }
+
+    #[tokio::test]
+    async fn test_create_and_find_user() {
+        let db = setup_db().await;
+        let user = db.create_user("alice", "alice@test.com", "hash").await.unwrap();
+        assert_eq!(user.username, "alice");
+        assert_eq!(user.email, "alice@test.com");
+        assert_eq!(user.password_hash, "hash");
+        assert!(user.id > 0);
+
+        let found = db.find_user_by_username("alice").await.unwrap().unwrap();
+        assert_eq!(found.id, user.id);
+
+        let by_id = db.find_user_by_id(user.id).await.unwrap().unwrap();
+        assert_eq!(by_id.username, "alice");
+    }
+
+    #[tokio::test]
+    async fn test_create_user_duplicate_rejected() {
+        let db = setup_db().await;
+        db.create_user("alice", "a@t.com", "h1").await.unwrap();
+        let dup = db.create_user("alice", "b@t.com", "h2").await;
+        assert!(dup.is_err());
+
+        let dup_email = db.create_user("bob", "a@t.com", "h3").await;
+        assert!(dup_email.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_find_user_nonexistent() {
+        let db = setup_db().await;
+        assert!(db.find_user_by_username("nobody").await.unwrap().is_none());
+        assert!(db.find_user_by_id(999).await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn test_change_password() {
+        let db = setup_db().await;
+        let user = db.create_user("alice", "a@t.com", "oldhash").await.unwrap();
+        db.change_password(user.id, "newhash").await.unwrap();
+        let updated = db.find_user_by_id(user.id).await.unwrap().unwrap();
+        assert_eq!(updated.password_hash, "newhash");
+    }
+
+    #[tokio::test]
+    async fn test_update_user() {
+        let db = setup_db().await;
+        let user = db.create_user("alice", "a@t.com", "hash").await.unwrap();
+        db.update_user(user.id, "my bio", "https://avatar").await.unwrap();
+        let updated = db.find_user_by_id(user.id).await.unwrap().unwrap();
+        assert_eq!(updated.bio, "my bio");
+        assert_eq!(updated.avatar_url, "https://avatar");
+    }
+
+    #[tokio::test]
+    async fn test_repo_crud() {
+        let db = setup_db().await;
+        let user = db.create_user("alice", "a@t.com", "hash").await.unwrap();
+
+        let repo = db.create_repo(user.id, "myrepo", "desc", false, "user", None).await.unwrap();
+        assert_eq!(repo.name, "myrepo");
+        assert!(!repo.is_private);
+        assert_eq!(repo.owner_type, "user");
+
+        let found = db.find_repo_by_name(user.id, "myrepo").await.unwrap().unwrap();
+        assert_eq!(found.id, repo.id);
+
+        let by_id = db.find_repo_by_id(repo.id).await.unwrap().unwrap();
+        assert_eq!(by_id.name, "myrepo");
+
+        let repos = db.list_user_repos(user.id).await.unwrap();
+        assert_eq!(repos.len(), 1);
+
+        assert!(db.delete_repo(repo.id).await.unwrap());
+        assert!(db.find_repo_by_id(repo.id).await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn test_repo_private_flag() {
+        let db = setup_db().await;
+        let user = db.create_user("alice", "a@t.com", "hash").await.unwrap();
+
+        let private_repo = db.create_repo(user.id, "private", "desc", true, "user", None).await.unwrap();
+        assert!(private_repo.is_private);
+
+        let public_repo = db.create_repo(user.id, "public", "desc", false, "user", None).await.unwrap();
+        assert!(!public_repo.is_private);
+
+        let public_list = db.list_public_user_repos(user.id).await.unwrap();
+        assert_eq!(public_list.len(), 1);
+        assert_eq!(public_list[0].name, "public");
+    }
+
+    #[tokio::test]
+    async fn test_repo_duplicate_name_rejected() {
+        let db = setup_db().await;
+        let user = db.create_user("alice", "a@t.com", "hash").await.unwrap();
+        db.create_repo(user.id, "myrepo", "desc", false, "user", None).await.unwrap();
+        let dup = db.create_repo(user.id, "myrepo", "desc2", false, "user", None).await;
+        assert!(dup.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_update_repo() {
+        let db = setup_db().await;
+        let user = db.create_user("alice", "a@t.com", "hash").await.unwrap();
+        let repo = db.create_repo(user.id, "oldname", "desc", false, "user", None).await.unwrap();
+        db.update_repo(repo.id, "newname", "newdesc", true).await.unwrap();
+        let updated = db.find_repo_by_id(repo.id).await.unwrap().unwrap();
+        assert_eq!(updated.name, "newname");
+        assert_eq!(updated.description, "newdesc");
+        assert!(updated.is_private);
+    }
+
+    #[tokio::test]
+    async fn test_find_repo_nonexistent() {
+        let db = setup_db().await;
+        let user = db.create_user("alice", "a@t.com", "hash").await.unwrap();
+        assert!(db.find_repo_by_name(user.id, "nonexistent").await.unwrap().is_none());
+        assert!(db.find_repo_by_id(999).await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn test_org_crud() {
+        let db = setup_db().await;
+        let owner = db.create_user("owner", "o@t.com", "hash").await.unwrap();
+
+        let org = db.create_org("myorg", "My Org", "desc", owner.id).await.unwrap();
+        assert_eq!(org.name, "myorg");
+        assert_eq!(org.owner_id, owner.id);
+
+        let found = db.find_org_by_name("myorg").await.unwrap().unwrap();
+        assert_eq!(found.id, org.id);
+
+        let by_id = db.find_org_by_id(org.id).await.unwrap().unwrap();
+        assert_eq!(by_id.name, "myorg");
+
+        db.update_org(org.id, "New Name", "new desc").await.unwrap();
+        let updated = db.find_org_by_id(org.id).await.unwrap().unwrap();
+        assert_eq!(updated.display_name, "New Name");
+        assert_eq!(updated.description, "new desc");
+
+        assert!(db.delete_org(org.id).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_org_members() {
+        let db = setup_db().await;
+        let owner = db.create_user("owner", "o@t.com", "hash").await.unwrap();
+        let user = db.create_user("user", "u@t.com", "hash").await.unwrap();
+        let org = db.create_org("myorg", "My Org", "desc", owner.id).await.unwrap();
+
+        let member = db.add_org_member(org.id, user.id, "member").await.unwrap();
+        assert_eq!(member.role, "member");
+
+        let members = db.list_org_members(org.id).await.unwrap();
+        assert_eq!(members.len(), 1);
+        assert_eq!(members[0].1.username, "user");
+
+        db.update_org_member_role(org.id, user.id, "admin").await.unwrap();
+        let members2 = db.list_org_members(org.id).await.unwrap();
+        assert_eq!(members2[0].0.role, "admin");
+
+        assert!(db.remove_org_member(org.id, user.id).await.unwrap());
+        assert_eq!(db.list_org_members(org.id).await.unwrap().len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_org_repo() {
+        let db = setup_db().await;
+        let owner = db.create_user("owner", "o@t.com", "hash").await.unwrap();
+        let org = db.create_org("myorg", "My Org", "desc", owner.id).await.unwrap();
+
+        let repo = db.create_repo(owner.id, "orgrepo", "desc", false, "org", Some(org.id)).await.unwrap();
+        assert_eq!(repo.owner_type, "org");
+        assert_eq!(repo.org_id, Some(org.id));
+
+        let found = db.find_org_repo_by_name(org.id, "orgrepo").await.unwrap().unwrap();
+        assert_eq!(found.id, repo.id);
+
+        let org_repos = db.list_org_repos(org.id).await.unwrap();
+        assert_eq!(org_repos.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_pages_config_upsert() {
+        let db = setup_db().await;
+        let user = db.create_user("alice", "a@t.com", "hash").await.unwrap();
+        let repo = db.create_repo(user.id, "myrepo", "desc", false, "user", None).await.unwrap();
+
+        db.upsert_pages_config(repo.id, "main", "/", "", true).await.unwrap();
+        let cfg = db.get_pages_config(repo.id).await.unwrap().unwrap();
+        assert_eq!(cfg.branch, "main");
+        assert!(cfg.enabled);
+
+        db.upsert_pages_config(repo.id, "gh-pages", "/docs", "example.com", false).await.unwrap();
+        let updated = db.get_pages_config(repo.id).await.unwrap().unwrap();
+        assert_eq!(updated.branch, "gh-pages");
+        assert_eq!(updated.custom_domain, "example.com");
+        assert!(!updated.enabled);
+    }
+
+    #[tokio::test]
+    async fn test_apps_config_crud() {
+        let db = setup_db().await;
+        let user = db.create_user("alice", "a@t.com", "hash").await.unwrap();
+        let repo = db.create_repo(user.id, "myapp", "desc", false, "user", None).await.unwrap();
+
+        db.upsert_apps_config(repo.id, "main", "/", "npm build", "npm start", r#"{"PORT":"3000"}"#, true).await.unwrap();
+        let cfg = db.get_apps_config(repo.id).await.unwrap().unwrap();
+        assert_eq!(cfg.build_command, "npm build");
+        assert!(cfg.enabled);
+        assert_eq!(cfg.port, 0);
+
+        db.set_app_port(repo.id, 8080).await.unwrap();
+        let with_port = db.get_apps_config(repo.id).await.unwrap().unwrap();
+        assert_eq!(with_port.port, 8080);
+
+        let enabled = db.get_enabled_apps().await.unwrap();
+        assert_eq!(enabled.len(), 1);
+
+        db.delete_apps_config(repo.id).await.unwrap();
+        assert!(db.get_apps_config(repo.id).await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn test_ssh_keys() {
+        let db = setup_db().await;
+        let user = db.create_user("alice", "a@t.com", "hash").await.unwrap();
+        let repo = db.create_repo(user.id, "myrepo", "desc", false, "user", None).await.unwrap();
+
+        let key = db.create_ssh_key(user.id, repo.id, "mykey", "ssh-rsa AAAA...").await.unwrap();
+        assert_eq!(key.name, "mykey");
+
+        let keys = db.list_ssh_keys(repo.id).await.unwrap();
+        assert_eq!(keys.len(), 1);
+
+        assert!(db.delete_ssh_key(key.id, user.id).await.unwrap());
+        assert!(db.list_ssh_keys(repo.id).await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_deploy_logs() {
+        let db = setup_db().await;
+        let user = db.create_user("alice", "a@t.com", "hash").await.unwrap();
+        let repo = db.create_repo(user.id, "myrepo", "desc", false, "user", None).await.unwrap();
+
+        let log = db.create_deploy_log(repo.id).await.unwrap();
+        assert_eq!(log.status, "running");
+
+        db.append_deploy_log(log.id, "Building...").await.unwrap();
+        db.update_deploy_log(log.id, "success", "Done").await.unwrap();
+        let updated = db.get_deploy_log(log.id).await.unwrap().unwrap();
+        assert_eq!(updated.status, "success");
+        assert_eq!(updated.log_output, "Done");
+        assert!(updated.finished_at.is_some());
+
+        let logs = db.get_deploy_logs(repo.id).await.unwrap();
+        assert_eq!(logs.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_issues_crud() {
+        let db = setup_db().await;
+        let user = db.create_user("alice", "a@t.com", "hash").await.unwrap();
+        let repo = db.create_repo(user.id, "myrepo", "desc", false, "user", None).await.unwrap();
+
+        let num = db.next_issue_number(repo.id).await.unwrap();
+        assert_eq!(num, 1);
+
+        let issue = db.create_issue(repo.id, num, "Bug", "something broke", user.id, None).await.unwrap();
+        assert_eq!(issue.issue.title, "Bug");
+        assert_eq!(issue.author_username, "alice");
+
+        let list = db.list_issues(repo.id, None).await.unwrap();
+        assert_eq!(list.len(), 1);
+
+        let fetched = db.get_issue(repo.id, 1).await.unwrap().unwrap();
+        assert_eq!(fetched.issue.title, "Bug");
+
+        db.update_issue(issue.issue.id, repo.id, Some("Fixed"), None, Some("closed"), None).await.unwrap();
+        let updated = db.get_issue(repo.id, 1).await.unwrap().unwrap();
+        assert_eq!(updated.issue.state, "closed");
+    }
+
+    #[tokio::test]
+    async fn test_labels() {
+        let db = setup_db().await;
+        let user = db.create_user("alice", "a@t.com", "hash").await.unwrap();
+        let repo = db.create_repo(user.id, "myrepo", "desc", false, "user", None).await.unwrap();
+        let issue = db.create_issue(repo.id, 1, "Bug", "body", user.id, None).await.unwrap();
+
+        let label = db.create_label(repo.id, "bug", "d73a4a").await.unwrap();
+        assert_eq!(label.name, "bug");
+
+        let all_labels = db.list_labels(repo.id).await.unwrap();
+        assert_eq!(all_labels.len(), 1);
+
+        db.set_issue_labels(issue.issue.id, &[label.id]).await.unwrap();
+        let issue_labels = db.list_issue_labels(issue.issue.id).await.unwrap();
+        assert_eq!(issue_labels.len(), 1);
+        assert_eq!(issue_labels[0].name, "bug");
+    }
+
+    #[tokio::test]
+    async fn test_comments() {
+        let db = setup_db().await;
+        let user = db.create_user("alice", "a@t.com", "hash").await.unwrap();
+        let repo = db.create_repo(user.id, "myrepo", "desc", false, "user", None).await.unwrap();
+        let issue = db.create_issue(repo.id, 1, "Bug", "body", user.id, None).await.unwrap();
+
+        let comment = db.add_comment(issue.issue.id, user.id, "me too").await.unwrap();
+        assert_eq!(comment.body, "me too");
+        assert_eq!(comment.author_username, "alice");
+
+        let comments = db.list_comments(issue.issue.id).await.unwrap();
+        assert_eq!(comments.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_pr_crud() {
+        let db = setup_db().await;
+        let user = db.create_user("alice", "a@t.com", "hash").await.unwrap();
+        let repo = db.create_repo(user.id, "myrepo", "desc", false, "user", None).await.unwrap();
+        let fork = db.create_repo(user.id, "fork", "desc", false, "user", None).await.unwrap();
+
+        let num = db.next_pr_number(repo.id).await.unwrap();
+        assert_eq!(num, 1);
+
+        let pr = db.create_pr(repo.id, num, "Add feature", "body", user.id, fork.id, "feature", "main").await.unwrap();
+        assert_eq!(pr.pr.title, "Add feature");
+        assert_eq!(pr.author_username, "alice");
+
+        let list = db.list_prs(repo.id, None).await.unwrap();
+        assert_eq!(list.len(), 1);
+
+        let fetched = db.get_pr(repo.id, 1).await.unwrap().unwrap();
+        assert_eq!(fetched.pr.base_ref, "main");
+
+        db.set_pr_merge_sha(pr.pr.id, "abc123").await.unwrap();
+        let merged = db.get_pr(repo.id, 1).await.unwrap().unwrap();
+        assert_eq!(merged.pr.state, "merged");
+        assert_eq!(merged.pr.merge_commit_sha, Some("abc123".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_stars() {
+        let db = setup_db().await;
+        let user = db.create_user("alice", "a@t.com", "hash").await.unwrap();
+        let repo = db.create_repo(user.id, "myrepo", "desc", false, "user", None).await.unwrap();
+
+        db.star_repo(user.id, repo.id).await.unwrap();
+        assert!(db.is_starred(user.id, repo.id).await.unwrap());
+
+        let stargazers = db.list_stargazers(repo.id).await.unwrap();
+        assert_eq!(stargazers.len(), 1);
+
+        assert!(db.unstar_repo(user.id, repo.id).await.unwrap());
+        assert!(!db.is_starred(user.id, repo.id).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_watches() {
+        let db = setup_db().await;
+        let user = db.create_user("alice", "a@t.com", "hash").await.unwrap();
+        let repo = db.create_repo(user.id, "myrepo", "desc", false, "user", None).await.unwrap();
+
+        db.watch_repo(user.id, repo.id, "watching").await.unwrap();
+        let wt = db.get_watch_type(user.id, repo.id).await.unwrap();
+        assert_eq!(wt, Some("watching".to_string()));
+
+        db.watch_repo(user.id, repo.id, "ignoring").await.unwrap();
+        let wt2 = db.get_watch_type(user.id, repo.id).await.unwrap();
+        assert_eq!(wt2, Some("ignoring".to_string()));
+
+        assert!(db.unwatch_repo(user.id, repo.id).await.unwrap());
+        assert!(db.get_watch_type(user.id, repo.id).await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn test_access_tokens() {
+        let db = setup_db().await;
+        let user = db.create_user("alice", "a@t.com", "hash").await.unwrap();
+
+        let token = db.create_access_token(user.id, "dev", "hash123", "gpt_", "repo:read", None).await.unwrap();
+        assert_eq!(token.name, "dev");
+        assert_eq!(token.token_prefix, "gpt_");
+
+        let tokens = db.list_access_tokens(user.id).await.unwrap();
+        assert_eq!(tokens.len(), 1);
+
+        assert!(db.delete_access_token(token.id, user.id).await.unwrap());
+        assert!(db.list_access_tokens(user.id).await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_collaborators() {
+        let db = setup_db().await;
+        let owner = db.create_user("owner", "o@t.com", "hash").await.unwrap();
+        let user = db.create_user("collab", "c@t.com", "hash").await.unwrap();
+        let repo = db.create_repo(owner.id, "myrepo", "desc", false, "user", None).await.unwrap();
+
+        db.add_collaborator(repo.id, user.id, "write").await.unwrap();
+        let collabs = db.list_collaborators(repo.id).await.unwrap();
+        assert_eq!(collabs.len(), 1);
+        assert_eq!(collabs[0].username, "collab");
+        assert_eq!(collabs[0].permission, "write");
+
+        assert!(db.remove_collaborator(repo.id, user.id).await.unwrap());
+        assert!(db.list_collaborators(repo.id).await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_secrets() {
+        let db = setup_db().await;
+        let user = db.create_user("alice", "a@t.com", "hash").await.unwrap();
+        let repo = db.create_repo(user.id, "myrepo", "desc", false, "user", None).await.unwrap();
+
+        let encrypted = b"encrypted-data-bytes";
+        let secret = db.create_secret(repo.id, "DB_PASS", encrypted).await.unwrap();
+        assert_eq!(secret.name, "DB_PASS");
+
+        let secrets = db.list_secrets(repo.id).await.unwrap();
+        assert_eq!(secrets.len(), 1);
+
+        assert!(db.delete_secret(secret.id, repo.id).await.unwrap());
+        assert!(db.list_secrets(repo.id).await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_branch_protection() {
+        let db = setup_db().await;
+        let user = db.create_user("alice", "a@t.com", "hash").await.unwrap();
+        let repo = db.create_repo(user.id, "myrepo", "desc", false, "user", None).await.unwrap();
+
+        let bp = db.create_branch_protection(repo.id, "main", true, 2, true).await.unwrap();
+        assert_eq!(bp.pattern, "main");
+        assert!(bp.require_pr);
+        assert_eq!(bp.require_approvals, 2);
+
+        let list = db.list_branch_protections(repo.id).await.unwrap();
+        assert_eq!(list.len(), 1);
+
+        assert!(db.delete_branch_protection(bp.id, repo.id).await.unwrap());
+        assert!(db.list_branch_protections(repo.id).await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_search_repos() {
+        let db = setup_db().await;
+        let user = db.create_user("alice", "a@t.com", "hash").await.unwrap();
+        db.create_repo(user.id, "myproject", "a cool project", false, "user", None).await.unwrap();
+        db.create_repo(user.id, "other", "something else", false, "user", None).await.unwrap();
+        db.create_repo(user.id, "secret", "private stuff", true, "user", None).await.unwrap();
+
+        let (results, total) = db.search_repos("project", 1, 10).await.unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(total, 1);
+        assert_eq!(results[0].name, "myproject");
+    }
+
+    #[tokio::test]
+    async fn test_fork_operations() {
+        let db = setup_db().await;
+        let user = db.create_user("alice", "a@t.com", "hash").await.unwrap();
+        let source = db.create_repo(user.id, "source", "desc", false, "user", None).await.unwrap();
+        let fork = db.create_repo(user.id, "fork", "desc", false, "user", None).await.unwrap();
+
+        db.set_repo_forked_from(fork.id, source.id).await.unwrap();
+        let fetched = db.find_repo_by_id(fork.id).await.unwrap().unwrap();
+        assert_eq!(fetched.forked_from, Some(source.id));
+    }
+
+    #[tokio::test]
+    async fn test_user_orgs_listing() {
+        let db = setup_db().await;
+        let owner = db.create_user("owner", "o@t.com", "hash").await.unwrap();
+        let org = db.create_org("myorg", "My Org", "desc", owner.id).await.unwrap();
+        db.add_org_member(org.id, owner.id, "admin").await.unwrap();
+
+        let user_orgs = db.list_user_orgs(owner.id).await.unwrap();
+        assert_eq!(user_orgs.len(), 1);
+        assert_eq!(user_orgs[0].role, "admin");
+    }
+}
