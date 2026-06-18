@@ -94,6 +94,9 @@ fi
         None
     };
 
+    // Restore running apps on startup
+    restore_apps_on_startup(&db, &app_manager, docker.as_ref(), &cfg).await;
+
     let state = app::AppState {
         db,
         config: cfg.clone(),
@@ -114,4 +117,69 @@ fi
     axum::serve(listener, app)
         .await
         .expect("Server error");
+}
+
+async fn restore_apps_on_startup(db: &db::Database, app_manager: &deploy::AppProcessManager, docker: Option<&docker::DockerManager>, cfg: &Arc<config::Config>) {
+    let apps = match db.get_enabled_apps_with_owner().await {
+        Ok(a) => a,
+        Err(e) => {
+            tracing::warn!("Failed to load enabled apps on startup: {}", e);
+            return;
+        }
+    };
+
+    if apps.is_empty() {
+        return;
+    }
+
+    tracing::info!("Restoring {} enabled app(s) on startup...", apps.len());
+
+    for app in &apps {
+        let port = app.config.port as u16;
+        if port == 0 {
+            tracing::info!("Skipping app {}/{}: no port persisted", app.username, app.repo_name);
+            continue;
+        }
+
+        let repo_id = app.config.repo_id;
+
+        if let Some(docker) = docker {
+            // Docker mode: check if app is still running in container
+            match docker.exec_check_status(&app.username, &app.repo_name, port).await {
+                Ok(true) => {
+                    let proc = deploy::AppProcess {
+                        repo_id,
+                        port,
+                        status: deploy::AppStatus::Running,
+                        pid: 0,
+                    };
+                    app_manager.register(proc).await;
+                    tracing::info!("Restored app {}/{} on port {}", app.username, app.repo_name, port);
+                }
+                Ok(false) => {
+                    // App not running, re-deploy
+                    tracing::info!("Re-deploying app {}/{} (not running)", app.username, app.repo_name);
+                    let repo_path = cfg.repo_path(&app.username, &app.repo_name);
+                    let workspace = cfg.app_workspace_dir(&app.username, &app.repo_name);
+                    let _ = deploy::deploy_app(
+                        app_manager,
+                        &repo_path,
+                        &workspace,
+                        &app.config,
+                        &app.username,
+                        &app.repo_name,
+                        repo_id,
+                        Some(docker),
+                        Some(db),
+                    ).await;
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to check app {}/{}: {}", app.username, app.repo_name, e);
+                }
+            }
+        } else {
+            // Process mode: processes are lost on restart, skip
+            tracing::info!("Skipping app {}/{} (process mode, restart required)", app.username, app.repo_name);
+        }
+    }
 }

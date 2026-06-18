@@ -43,6 +43,7 @@ exec docker run --rm --name gitpage \
   -p "$PORT:8080" \
   -p "$SSH_PORT:22" \
   -v "$DATA_DIR:/app/data" \
+  -v "gitpage-ssh-keys:/etc/ssh" \
   -e RUST_LOG=info \
   -e SSH_USERS="alice:alice123,bob:bob123" \
   "$IMAGE"

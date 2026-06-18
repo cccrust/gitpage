@@ -55,9 +55,8 @@ v1.0 ─── v1.1 ─── v1.2 ─── v1.3 ─── v1.4 …
 
 ### SSH 隔離
 
-- [ ] 每人一台獨立 sshd，宿主機分配 port（如 22001→alice, 22002→bob）
-- [ ] port 分配：`[ssh] port_range_start / port_range_end`
-- [ ] SSH public key 自動同步到容器內 `~/.ssh/authorized_keys`
+- [ ] 每人一台獨立 sshd，宿主機分配 port（如 22001→alice, 22002→bob）→ 已完成：port 分配，但容器內尚無 sshd
+- [x] SSH public key 自動同步到容器內 `~/.ssh/authorized_keys`
 
 ### 儲存
 

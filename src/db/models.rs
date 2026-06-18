@@ -101,6 +101,7 @@ pub struct AppsConfig {
     pub start_command: String,
     pub env_vars: String,
     pub enabled: bool,
+    pub port: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -180,4 +181,11 @@ pub struct DeployLog {
     pub started_at: String,
     pub finished_at: Option<String>,
     pub log_output: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct EnabledAppWithOwner {
+    pub config: AppsConfig,
+    pub username: String,
+    pub repo_name: String,
 }

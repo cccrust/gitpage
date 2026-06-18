@@ -3,7 +3,7 @@ pub mod models;
 use rusqlite::{Connection, params};
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use models::{User, Repository, PagesConfig, AppsConfig, DeployLog, SshKey, SearchResultItem, Organization, OrganizationMember, OrganizationWithRole, OrgRepoResult};
+use models::{User, Repository, PagesConfig, AppsConfig, DeployLog, SshKey, SearchResultItem, Organization, OrganizationMember, OrganizationWithRole, OrgRepoResult, EnabledAppWithOwner};
 
 #[derive(Clone)]
 pub struct Database {
@@ -80,7 +80,8 @@ impl Database {
                 build_command   TEXT DEFAULT '',
                 start_command   TEXT DEFAULT '',
                 env_vars        TEXT DEFAULT '{}',
-                enabled         INTEGER DEFAULT 0
+                enabled         INTEGER DEFAULT 0,
+                port            INTEGER DEFAULT 0
             );
 
             CREATE TABLE IF NOT EXISTS deploy_logs (
@@ -148,6 +149,11 @@ impl Database {
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_repos_user_name ON repositories(user_id, name) WHERE owner_type = 'user';
              CREATE UNIQUE INDEX IF NOT EXISTS idx_repos_org_name ON repositories(org_id, name) WHERE org_id IS NOT NULL;"
         )?;
+
+        // Migration: add port column to apps_config (v1.2)
+        conn.execute_batch(
+            "ALTER TABLE apps_config ADD COLUMN port INTEGER DEFAULT 0;"
+        ).ok();
 
         Ok(())
     }
@@ -435,10 +441,19 @@ impl Database {
         Ok(())
     }
 
+    pub async fn set_app_port(&self, repo_id: i64, port: u16) -> Result<(), rusqlite::Error> {
+        let conn = self.conn.lock().await;
+        conn.execute(
+            "UPDATE apps_config SET port = ?1 WHERE repo_id = ?2",
+            params![port as i32, repo_id],
+        )?;
+        Ok(())
+    }
+
     pub async fn get_apps_config(&self, repo_id: i64) -> Result<Option<AppsConfig>, rusqlite::Error> {
         let conn = self.conn.lock().await;
         let mut stmt = conn.prepare(
-            "SELECT id, repo_id, branch, source_dir, build_command, start_command, env_vars, enabled FROM apps_config WHERE repo_id = ?1"
+            "SELECT id, repo_id, branch, source_dir, build_command, start_command, env_vars, enabled, port FROM apps_config WHERE repo_id = ?1"
         )?;
         let mut rows = stmt.query_map(params![repo_id], |row| {
             Ok(AppsConfig {
@@ -450,6 +465,7 @@ impl Database {
                 start_command: row.get(5)?,
                 env_vars: row.get(6)?,
                 enabled: row.get::<_, i32>(7)? != 0,
+                port: row.get(8)?,
             })
         })?;
         match rows.next() {
@@ -467,7 +483,7 @@ impl Database {
     pub async fn get_enabled_apps(&self) -> Result<Vec<AppsConfig>, rusqlite::Error> {
         let conn = self.conn.lock().await;
         let mut stmt = conn.prepare(
-            "SELECT id, repo_id, branch, source_dir, build_command, start_command, env_vars, enabled FROM apps_config WHERE enabled = 1"
+            "SELECT id, repo_id, branch, source_dir, build_command, start_command, env_vars, enabled, port FROM apps_config WHERE enabled = 1"
         )?;
         let rows = stmt.query_map([], |row| {
             Ok(AppsConfig {
@@ -479,6 +495,38 @@ impl Database {
                 start_command: row.get(5)?,
                 env_vars: row.get(6)?,
                 enabled: row.get::<_, i32>(7)? != 0,
+                port: row.get(8)?,
+            })
+        })?;
+        rows.collect()
+    }
+
+    pub async fn get_enabled_apps_with_owner(&self) -> Result<Vec<EnabledAppWithOwner>, rusqlite::Error> {
+        let conn = self.conn.lock().await;
+        let mut stmt = conn.prepare(
+            "SELECT a.id, a.repo_id, a.branch, a.source_dir, a.build_command, a.start_command, a.env_vars, a.enabled, a.port,
+                    COALESCE(u.username, o.name) AS owner_name, r.name AS repo_name
+             FROM apps_config a
+             JOIN repositories r ON r.id = a.repo_id
+             LEFT JOIN users u ON u.id = r.user_id AND r.owner_type = 'user'
+             LEFT JOIN organizations o ON o.id = r.org_id AND r.owner_type = 'org'
+             WHERE a.enabled = 1"
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok(EnabledAppWithOwner {
+                config: AppsConfig {
+                    id: row.get(0)?,
+                    repo_id: row.get(1)?,
+                    branch: row.get(2)?,
+                    source_dir: row.get(3)?,
+                    build_command: row.get(4)?,
+                    start_command: row.get(5)?,
+                    env_vars: row.get(6)?,
+                    enabled: row.get::<_, i32>(7)? != 0,
+                    port: row.get(8)?,
+                },
+                username: row.get(9)?,
+                repo_name: row.get(10)?,
             })
         })?;
         rows.collect()

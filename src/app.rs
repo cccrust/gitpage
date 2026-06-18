@@ -396,6 +396,7 @@ pub(crate) async fn auto_deploy_app(state: AppState, owner_name: String, repo_na
         &repo_name,
         repo.id,
         state.docker.as_ref(),
+        Some(&state.db),
     ).await {
         Ok((port, log)) => {
             let _ = state.db.update_deploy_log(deploy_log.id, "success", &log).await;

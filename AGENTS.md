@@ -128,7 +128,7 @@ Docker **runtime mode** (`config.toml`: `[runtime] mode = "docker"`) creates per
 - `Dockerfile.base` — dev tooling image (Python, Rust, Node.js, uv, opencode)
 - `run_docker.sh` — builds image, mounts `data/` volume, runs on `:8080` + SSH on `:2222`
 - `test_docker.sh` — builds image, starts container on `:18080`, runs full test suite
-- `test_docker_mode.sh` — tests per-user container creation, named volume, staging bind, container exec build/start, **SSH port publishing**
+- `test_docker_mode.sh` — tests per-user container creation, named volume, staging bind, container exec build/start, **SSH port publishing**, **app restore on restart**
 - `entrypoint.sh` — container entrypoint: generates SSH host keys, starts sshd, then gitpage
 - `.dockerignore` — excludes build artifacts, git history, scripts
 
@@ -162,7 +162,7 @@ frontend/vite.config.ts— Dev proxy: /api, /git, /pages → :8080
 - `seed.sh` starts its own server if none running (deletes `data/` via `rm -rf data`)
 - `test_docker.sh` uses isolated temp data dir (`/tmp/gptest-docker-data`), no impact on host
 - `test_docker_mode.sh` uses `test_docker_mode_data` temp dir, no impact on host
-- App processes are lost on server restart (DB config persists, subprocesses don't)
+- App processes: docker mode re-deploys on restart via `restore_apps_on_startup()` in `main.rs`; process mode apps are lost
 - SSH: `~/.ssh/authorized_keys` and `~/.ssh/gitpage-shell` are auto-managed — don't edit manually
 - libgit2 errors are wrapped as `AppError::Internal` in Chinese
 - Docker runtime mode containers run `sleep infinity` — must keep running for `docker exec` to work

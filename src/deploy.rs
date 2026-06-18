@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use crate::db::Database;
 use crate::db::models::AppsConfig;
 use crate::docker::DockerManager;
 use crate::utils::errors::AppError;
@@ -349,6 +350,7 @@ pub async fn deploy_app(
     repo_name: &str,
     repo_id: i64,
     docker: Option<&DockerManager>,
+    db: Option<&Database>,
 ) -> Result<(u16, String), AppError> {
     manager.update_status(repo_id, AppStatus::Deploying).await;
     let mut log = String::new();
@@ -385,6 +387,11 @@ pub async fn deploy_app(
     // Allocate port
     let port = manager.allocate_port().await?;
     log.push_str(&format!("\nPort: {}\n\n", port));
+
+    // Persist port to DB
+    if let Some(db) = db {
+        let _ = db.set_app_port(repo_id, port).await;
+    }
 
     // Start
     match start_app(manager, repo_id, workspace_dir, &start_cmd, port, &config.env_vars, docker, username, repo_name).await {

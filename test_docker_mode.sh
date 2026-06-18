@@ -232,7 +232,50 @@ echo "=== 10. API checks ==="
 curl -sf "http://localhost:$TEST_PORT/api/test/myapp/tree?branch=main" | python3 -m json.tool
 
 echo ""
-echo "=== 11. Cleanup test user ==="
+echo "=== 11. Restart server (verify restore on startup) ==="
+kill $SERVER_PID 2>/dev/null
+sleep 2
+# Ensure old process is dead
+pkill -f "target/debug/gitpage" 2>/dev/null || true
+sleep 1
+# Restart server
+RUST_LOG=info cargo run &
+SERVER_PID=$!
+sleep 5
+# Check server came back
+curl -sf "http://localhost:$TEST_PORT/" > /dev/null 2>&1 || {
+    echo "FAIL: Server not responding after restart"
+    exit 1
+}
+echo "Server restarted successfully"
+
+echo ""
+echo "=== 11a. Check app status after restart ==="
+curl -sf "http://localhost:$TEST_PORT/api/apps/$REPO_ID" \
+  -H "Authorization: Bearer $TK" | python3 -c "
+import sys,json
+d = json.load(sys.stdin)
+print('Status:', d.get('status'))
+print('Port:', d.get('port'))
+if d.get('status') == 'running':
+    print('PASS: app restored after restart')
+else:
+    print('FAIL: app not running after restart')
+    sys.exit(1)
+"
+
+echo ""
+echo "=== 11b. Check app is accessible via proxy ==="
+curl -sf "http://localhost:$TEST_PORT/app/test/myapp/" 2>&1 | head -5
+if [ $? -eq 0 ]; then
+    echo "PASS: app proxy works after restart"
+else
+    echo "FAIL: app proxy broken after restart"
+    exit 1
+fi
+
+echo ""
+echo "=== 12. Cleanup test user ==="
 docker rm -f gitpage-test 2>/dev/null || true
 docker volume rm gitpage-home-test 2>/dev/null || true
 

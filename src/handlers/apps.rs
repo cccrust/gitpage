@@ -66,6 +66,7 @@ async fn do_deploy(state: &AppState, repo_id: i64, user_id: i64) -> Result<Json<
         &repo.name,
         repo_id,
         state.docker.as_ref(),
+        Some(&state.db),
     ).await {
         Ok((port, log)) => {
             state.db.update_deploy_log(deploy_log.id, "success", &log).await?;

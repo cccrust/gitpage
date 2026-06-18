@@ -14,6 +14,7 @@ DATA_DIR="/tmp/gptest-docker-data"
 
 cleanup() {
     docker rm -f "$CONTAINER" 2>/dev/null
+    docker volume rm gptest-ssh-keys 2>/dev/null || true
     rm -rf "$DATA_DIR"
 }
 trap cleanup EXIT
@@ -31,6 +32,7 @@ mkdir -p "$DATA_DIR/repos"
 docker run -d --name "$CONTAINER" \
   -p "$PORT:8080" \
   -v "$DATA_DIR:/app/data" \
+  -v "gptest-ssh-keys:/etc/ssh" \
   -e RUST_LOG=info \
   "$IMAGE"
 
