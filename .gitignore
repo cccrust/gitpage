@@ -1,3 +1,5 @@
+test-results/
+
 *.db
 
 node_modules/
