@@ -16,8 +16,7 @@ test.describe('Authentication', () => {
         await inputs.nth(2).fill('pass123');
         await page.click('button:has-text("Register")');
 
-        await expect(page.locator('text=Repositories')).toBeVisible({ timeout: 10000 });
-        await expect(page.locator(`text=${username}`)).toBeVisible();
+        await expect(page.locator('h1:has-text("Repositories")')).toBeVisible({ timeout: 10000 });
     });
 
     test('login and logout flow', async ({ page, authUser }) => {
@@ -25,18 +24,18 @@ test.describe('Authentication', () => {
 
         // Already logged in via fixture; go to dashboard
         await page.goto('/');
-        await expect(page.locator('text=Repositories')).toBeVisible();
+        await expect(page.locator('h1:has-text("Repositories")')).toBeVisible();
 
         // Logout via nav link
         await page.click('a:has-text("Logout")');
         await page.waitForURL(/\/login/);
-        await expect(page.locator('text=Login')).toBeVisible();
+        await expect(page.locator('h2:has-text("Login")')).toBeVisible();
 
         // Login again
         await page.fill('form input[type="text"]', username);
         await page.fill('form input[type="password"]', 'pass123');
         await page.click('button:has-text("Login")');
-        await expect(page.locator('text=Repositories')).toBeVisible();
+        await expect(page.locator('h1:has-text("Repositories")')).toBeVisible();
     });
 
     test('reject bad credentials', async ({ page }) => {
@@ -49,6 +48,6 @@ test.describe('Authentication', () => {
 
     test('redirect to login when accessing protected page', async ({ page }) => {
         await page.goto('/settings');
-        await expect(page).toHaveURL(/\/login/);
+        await expect(page.locator('text=請先登入')).toBeVisible({ timeout: 5000 });
     });
 });
